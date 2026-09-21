@@ -1,0 +1,36 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: sh
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yaml
+
+  publish:
+    needs: ci
+    runs-on: macos-15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Verify tag matches package version
+        run: |
+          package_version=$(node --input-type=module --eval 'import metadata from "./package.json" with { type: "json" }; console.log(metadata.version);')
+          test "v${package_version}" = "${GITHUB_REF_NAME}"
+      - run: npm ci
+      - run: npm publish

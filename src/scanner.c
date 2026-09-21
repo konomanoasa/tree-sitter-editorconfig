@@ -164,7 +164,6 @@ static bool end_line(Scanner *s, TSLexer *lexer, const bool *valid) {
     token = LINE_ENDING;
   } else if (lexer->lookahead == '\r') {
     lexer->advance(lexer, false);
-    lexer->mark_end(lexer);
     token = INVALID_LINE_ENDING;
     if (lexer->lookahead == '\n') {
       lexer->advance(lexer, false);
@@ -191,11 +190,6 @@ boundary_issue(TSLexer *lexer, const bool *valid, enum Token invalid_token) {
   );
 }
 
-static bool invalid_encoding(Scanner *s, TSLexer *lexer, const bool *valid) {
-  advance(s, lexer);
-  return emit(lexer, valid, INVALID_ENCODING);
-}
-
 static bool text(
   Scanner *s,
   TSLexer *lexer,
@@ -204,7 +198,7 @@ static bool text(
   uint32_t end
 ) {
   if (lexer->lookahead == -1)
-    return invalid_encoding(s, lexer, valid);
+    return take(s, lexer, valid, INVALID_ENCODING);
   while (s->position < end && lexer->lookahead != -1)
     advance(s, lexer);
   return emit(lexer, valid, token);
@@ -370,7 +364,7 @@ static bool integer(Scanner *s, TSLexer *lexer, const bool *valid) {
 static bool glob(Scanner *s, TSLexer *lexer, const bool *valid) {
   int32_t c = lexer->lookahead;
   if (c == -1)
-    return invalid_encoding(s, lexer, valid);
+    return take(s, lexer, valid, INVALID_ENCODING);
   if (valid[SET_TEXT])
     return set(s, lexer, valid);
   if (valid[INTEGER])

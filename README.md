@@ -12,16 +12,25 @@ EditorConfig Specification 0.17.2.
 npm install @konomanoasa/tree-sitter-editorconfig
 ```
 
+## Grammar
+
+| Grammar | Description | Rust constant |
+| --- | --- | --- |
+| `editorconfig` | EditorConfig Specification 0.17.2 | `LANGUAGE` |
+
 ## Development
+
+Development requires Node.js 24.2.0 or later.
 
 ```sh
 npm install
-npm run parse -- .editorconfig
+npm run build
+npm test
 ```
 
-## Specifications
+## Specification
 
-- [EditorConfig Specification 0.17.2](https://spec.editorconfig.org/)
+[EditorConfig Specification 0.17.2](https://spec.editorconfig.org/)
 
 ## License
 
