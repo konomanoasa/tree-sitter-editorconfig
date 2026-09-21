@@ -1,0 +1,14 @@
+{
+  "files": {
+    "includes": [
+      "**",
+      "!!**/target",
+      "!**/src/grammar.json",
+      "!**/src/node-types.json"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2
+  }
+}
