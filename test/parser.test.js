@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import nodeTypes from "../src/node-types.json" with { type: "json" };
 import { issues, leaves, owners, parse } from "./support/parser.js";
 
-test("editorconfig: public issue nodes have exactly one outcome and one reason", () => {
-  const nodes = JSON.parse(
-    readFileSync(new URL("../src/node-types.json", import.meta.url), "utf8"),
-  );
-  const issue = nodes.find(({ type }) => type === "syntax_issue");
+test("editorconfig: public issue nodes have one outcome and one reason leaf", () => {
+  const issue = nodeTypes.find(({ type }) => type === "syntax_issue");
   assert.equal(issue.children.required, true);
   assert.equal(issue.children.multiple, false);
   assert.deepEqual(
@@ -15,17 +12,17 @@ test("editorconfig: public issue nodes have exactly one outcome and one reason",
     ["incomplete_syntax", "invalid_syntax"],
   );
   for (const { type } of issue.children.types) {
-    const outcome = nodes.find((node) => node.type === type);
+    const outcome = nodeTypes.find((node) => node.type === type);
     assert.equal(outcome.children.required, true);
     assert.equal(outcome.children.multiple, false);
     for (const child of outcome.children.types) {
-      const reason = nodes.find((node) => node.type === child.type);
+      const reason = nodeTypes.find((node) => node.type === child.type);
       assert.equal(reason.children, undefined);
     }
   }
 });
 
-const valid = [
+const validCases = [
   ["empty document", "", []],
   ["whitespace-only final line", " \t\v\f", [["blank_line", " \t\v\f"]]],
   [
@@ -195,7 +192,7 @@ const valid = [
     ],
   ],
 ];
-for (const [name, source, expected] of valid) {
+for (const [name, source, expected] of validCases) {
   test(`editorconfig: ${name}`, () => {
     const tree = parse(source);
     assert.deepEqual(issues(tree), []);
@@ -206,7 +203,7 @@ for (const [name, source, expected] of valid) {
   });
 }
 
-const missing = [
+const incompleteCases = [
   ["assignment", "key", [["missing_assignment_operator", 3, "pair"]]],
   ["header", "[a", [["missing_section_close", 2, "section_header"]]],
   [
@@ -242,14 +239,14 @@ const missing = [
     ],
   ],
 ];
-for (const [name, source, reasons] of missing) {
+for (const [name, source, reasons] of incompleteCases) {
   for (const [suffix, outcome] of [
     ["", "incomplete_syntax"],
     ["  ", "incomplete_syntax"],
     ["\n", "invalid_syntax"],
     [" \r\n", "invalid_syntax"],
   ]) {
-    test(`${name} missing before ${JSON.stringify(suffix)}`, () => {
+    test(`editorconfig: ${name} missing before ${JSON.stringify(suffix)}`, () => {
       const tree = parse(source + suffix);
       assert.deepEqual(
         issues(tree),
@@ -301,7 +298,7 @@ for (const [name, source, expected, owner] of [
     "pair",
   ],
 ])
-  test(`${name} at a closed boundary`, () => {
+  test(`editorconfig: ${name} at a closed boundary`, () => {
     const tree = parse(source);
     assert.deepEqual(issues(tree), expected);
     assert.deepEqual(owners(tree), [owner]);
@@ -330,7 +327,7 @@ for (const [name, prefix, suffix, owner] of [
   ["numeric range", "[{1..2", "}]", "numeric_range"],
   ["escape", "[\\", "a]", "pattern"],
 ]) {
-  test(`invalid UTF-8 inside ${name} has an isolated range`, () => {
+  test(`editorconfig: invalid UTF-8 inside ${name} has an isolated range`, () => {
     const source = Buffer.concat([
       Buffer.from(prefix),
       Buffer.from([255]),
@@ -413,7 +410,7 @@ for (const [name, suffix, expected, expectedOwners, tail] of [
     ],
   ],
 ]) {
-  test(`a numeric range cut by undecodable source lacks its closing ${name}`, () => {
+  test(`editorconfig: a numeric range cut by undecodable source lacks its closing ${name}`, () => {
     const source = Buffer.concat([
       Buffer.from("[{1..2"),
       Buffer.from([255]),
@@ -469,4 +466,17 @@ test("editorconfig: normal neighbors survive malformed lines", () => {
       .map(({ start, end }) => source.slice(start, end)),
     ["y", "w"],
   );
+});
+
+test("editorconfig: large documents, long values and nested glob alternatives complete", () => {
+  for (const source of [
+    `[*]\n${"key=value\n".repeat(5000)}`,
+    `[*]\nkey=${"x".repeat(100000)}`,
+    `[${"{a,".repeat(300)}z${"}".repeat(300)}]`,
+    `[${"{a,".repeat(300)}z`,
+  ])
+    assert.equal(
+      issues(parse(source)).some(([outcome]) => outcome === "invalid_syntax"),
+      false,
+    );
 });

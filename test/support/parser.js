@@ -30,11 +30,26 @@ function run(args) {
 
 function applyEdits(source, edits) {
   let bytes = Buffer.from(source);
-  for (const { byte, remove, insert } of edits) {
+  for (const edit of edits) {
+    const { byte, deleteBytes, insert } = edit;
+    const description = JSON.stringify(edit);
+    assert.ok(
+      Number.isSafeInteger(byte) && byte >= 0,
+      `invalid byte offset: ${description}`,
+    );
+    assert.ok(
+      Number.isSafeInteger(deleteBytes) && deleteBytes >= 0,
+      `invalid deletion length: ${description}`,
+    );
+    assert.equal(typeof insert, "string", `invalid insertion: ${description}`);
+    assert.ok(
+      byte <= bytes.length && deleteBytes <= bytes.length - byte,
+      `edit exceeds ${bytes.length} source bytes: ${description}`,
+    );
     bytes = Buffer.concat([
       bytes.subarray(0, byte),
       Buffer.from(insert),
-      bytes.subarray(byte + remove),
+      bytes.subarray(byte + deleteBytes),
     ]);
   }
   return bytes;
@@ -57,7 +72,8 @@ function parse(source, edits = []) {
       ? [
           "--edits",
           ...edits.map(
-            ({ byte, remove, insert }) => `${byte} ${remove} ${insert}`,
+            ({ byte, deleteBytes, insert }) =>
+              `${byte} ${deleteBytes} ${insert}`,
           ),
         ]
       : []),
