@@ -377,8 +377,12 @@ static bool glob(Scanner *s, TSLexer *lexer, const bool *valid) {
     return take(s, lexer, valid, BRACE_CLOSE);
   if (c == ',' && valid[ALTERNATIVE_SEPARATOR])
     return take(s, lexer, valid, ALTERNATIVE_SEPARATOR);
-  if (!valid[GLOB_LITERAL])
-    return boundary_issue(lexer, valid, INVALID_MISSING_BRACE_CLOSE);
+  if (!valid[GLOB_LITERAL]) {
+    /* Cover the whole next character so edits to it retire this token. */
+    lexer->mark_end(lexer);
+    lexer->advance(lexer, false);
+    return emit(lexer, valid, INVALID_MISSING_BRACE_CLOSE);
+  }
   return atom(s, lexer, valid);
 }
 

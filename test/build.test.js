@@ -201,6 +201,16 @@ test(`${language}: corpus fuzz propagates CLI failures even when its exit status
       expectedStatus: 1,
       expectedDiagnostic: "Tree-sitter CLI terminated by SIGTERM.\n",
     },
+    {
+      name: "timeout retains the captured output",
+      status: null,
+      signal: "SIGKILL",
+      error: { code: "ETIMEDOUT", message: "spawnSync tree-sitter ETIMEDOUT" },
+      stdout: "fuzz progress\n",
+      stderr: "fuzz log\n",
+      expectedStatus: 1,
+      expectedDiagnostic: "spawnSync tree-sitter ETIMEDOUT\n",
+    },
   ];
   try {
     for (const fixture of fixtures) {

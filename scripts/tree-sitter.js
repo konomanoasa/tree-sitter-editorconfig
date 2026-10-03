@@ -216,7 +216,7 @@ function testCorpus(arguments_) {
       "test-corpus deletes its isolated copy; --update, --debug-graph, and --open-log would lose their output.",
     );
   }
-  const testRoot = mkdtempSync(join(root, `.${packageName}-test-`));
+  const testRoot = mkdtempSync(join(tmpdir(), `${packageName}-test-`));
   let runner;
 
   try {
@@ -273,9 +273,9 @@ function fuzzParsers(runner, arguments_) {
           killSignal: "SIGKILL",
         },
       );
+      process.stdout.write(result.stdout ?? "");
+      process.stderr.write(result.stderr ?? "");
       const status = resultStatus(result);
-      process.stdout.write(result.stdout);
-      process.stderr.write(result.stderr);
       if (status !== 0) return status;
       // The CLI can report failed fuzz cases while returning exit status zero.
       if (

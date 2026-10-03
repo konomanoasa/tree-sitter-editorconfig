@@ -262,3 +262,25 @@ for (const grammar of grammars) {
     });
   }
 }
+
+for (const name of [".editorconfig", "test.editorconfig"]) {
+  test(`editorconfig: the file name ${name} selects the grammar`, () => {
+    const source = "key = value\n";
+    const path = join(directory, name);
+    writeFileSync(path, source);
+    const html = assertCommand([
+      "highlight",
+      "--html",
+      "--layout",
+      "fragment",
+      "--style",
+      "classes",
+      path,
+    ]);
+    assertCaptures(source, renderedCaptures(html, source), [
+      [0, 3, "property"],
+      [4, 5, "operator"],
+      [6, 11, "string"],
+    ]);
+  });
+}

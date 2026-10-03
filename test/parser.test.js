@@ -142,10 +142,19 @@ const validCases = [
   ],
   [
     "literal brace forms join the surrounding literal",
-    "[a{b*c}d{e..f}{+1..2}]",
+    "[a{b*c}d{e..f}{+1..2}{g\\*}]",
     [
       ["section_open", "["],
-      ["glob_literal", "a{b*c}d{e..f}{+1..2}"],
+      ["glob_literal", "a{b*c}d{e..f}{+1..2}{g\\*}"],
+      ["section_close", "]"],
+    ],
+  ],
+  [
+    "backslash at the end of a literal brace stays literal",
+    "[{a\\]",
+    [
+      ["section_open", "["],
+      ["glob_literal", "{a\\"],
       ["section_close", "]"],
     ],
   ],
@@ -206,6 +215,11 @@ for (const [name, source, expected] of validCases) {
 const incompleteCases = [
   ["assignment", "key", [["missing_assignment_operator", 3, "pair"]]],
   ["header", "[a", [["missing_section_close", 2, "section_header"]]],
+  [
+    "literal brace backslash and header",
+    "[{a\\",
+    [["missing_section_close", 4, "section_header"]],
+  ],
   [
     "set and header",
     "[[a",
@@ -317,7 +331,47 @@ test("editorconfig: a leading byte order mark precedes the document", () => {
   ]);
 });
 
-for (const [name, prefix, suffix, owner] of [
+for (const [name, source, expected] of [
+  ["a repeated initial BOM", "\uFEFF\uFEFFa=b", ["key_text", "\uFEFFa"]],
+  ["a subsequent line", "a=b\n\uFEFFc=d", ["key_text", "\uFEFFc"]],
+  ["a value", "a=\uFEFFb", ["value_text", "\uFEFFb"]],
+  ["a comment", "# \uFEFFb", ["comment_text", " \uFEFFb"]],
+  ["a glob literal", "[a\uFEFFb]", ["glob_literal", "a\uFEFFb"]],
+  ["a set", "[[\uFEFF]]", ["set_text", "\uFEFF"]],
+  ["an escape", "[\\\uFEFF]", ["escape", "\\\uFEFF"]],
+]) {
+  test(`editorconfig: noninitial U+FEFF in ${name} remains in its source leaf`, () => {
+    const tree = parse(source);
+    assert.deepEqual(issues(tree), []);
+    assert.deepEqual(
+      leaves(source, tree).filter(([, text]) => text.includes("\uFEFF")),
+      [expected],
+    );
+  });
+}
+
+for (const [name, source, expected, owner] of [
+  [
+    "standalone CR",
+    "a=b\r",
+    [["invalid_syntax", "invalid_line_ending", 3, 4]],
+    "pair",
+  ],
+  [
+    "truncated UTF-8 sequence",
+    Buffer.concat([Buffer.from("a="), Buffer.from([0xc3])]),
+    [["invalid_syntax", "invalid_encoding", 2, 3]],
+    "value",
+  ],
+]) {
+  test(`editorconfig: ${name} at EOF remains an input violation`, () => {
+    const tree = parse(source);
+    assert.deepEqual(issues(tree), expected);
+    assert.deepEqual(owners(tree), [owner]);
+  });
+}
+
+for (const [name, prefix, suffix, owner, expectedLeaves] of [
   ["key", "k", "ey=v", "key"],
   ["value", "k=v", "alue", "value"],
   ["comment", "# a", "b", "comment"],
@@ -325,7 +379,31 @@ for (const [name, prefix, suffix, owner] of [
   ["set", "[[a", "b]]", "character_set"],
   ["literal brace", "[{a", "b}]", "pattern"],
   ["numeric range", "[{1..2", "}]", "numeric_range"],
-  ["escape", "[\\", "a]", "pattern"],
+  [
+    "escape",
+    "[\\",
+    "a]",
+    "pattern",
+    [
+      ["section_open", "["],
+      ["invalid_encoding", "\uFFFD"],
+      ["glob_literal", "a"],
+      ["section_close", "]"],
+    ],
+  ],
+  [
+    "literal brace backslash",
+    "[{a\\",
+    "}]",
+    "pattern",
+    [
+      ["section_open", "["],
+      ["glob_literal", "{a\\"],
+      ["invalid_encoding", "\uFFFD"],
+      ["glob_literal", "}"],
+      ["section_close", "]"],
+    ],
+  ],
 ]) {
   test(`editorconfig: invalid UTF-8 inside ${name} has an isolated range`, () => {
     const source = Buffer.concat([
@@ -338,13 +416,7 @@ for (const [name, prefix, suffix, owner] of [
       ["invalid_syntax", "invalid_encoding", prefix.length, prefix.length + 1],
     ]);
     assert.deepEqual(owners(tree), [owner]);
-    if (name === "escape") {
-      assert.ok(!tree.some(({ kind }) => kind === "escape"));
-      assert.deepEqual(leaves(source, tree).slice(-2), [
-        ["glob_literal", "a"],
-        ["section_close", "]"],
-      ]);
-    }
+    if (expectedLeaves) assert.deepEqual(leaves(source, tree), expectedLeaves);
   });
 }
 

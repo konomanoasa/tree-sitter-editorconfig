@@ -125,6 +125,15 @@ const cases = [
     "[{1..2é}]",
     [{ byte: 7, deleteBytes: 1, insert: "" }],
   ],
+  [
+    "split the character that ends a numeric range cut by undecodable source",
+    Buffer.concat([
+      Buffer.from("[{1..2"),
+      Buffer.from([255]),
+      Buffer.from("é}]"),
+    ]),
+    [{ byte: 8, deleteBytes: 1, insert: "" }],
+  ],
 ];
 for (const [name, source, edits] of cases) {
   test(`editorconfig: ${name}`, () => {

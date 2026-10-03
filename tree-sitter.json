@@ -6,7 +6,7 @@
       "title": "EditorConfig",
       "scope": "source.editorconfig",
       "path": ".",
-      "file-types": [".editorconfig"],
+      "file-types": [".editorconfig", "editorconfig"],
       "injection-regex": "^editorconfig$",
       "highlights": "queries/highlights.scm"
     }

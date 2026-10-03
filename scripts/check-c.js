@@ -60,8 +60,11 @@ function run(
   }
   if (result.status !== 0) {
     const diagnostics = (result.stderr || result.stdout || "").trim();
+    const outcome = result.signal
+      ? `terminated by ${result.signal}`
+      : `failed with status ${result.status}`;
     throw new Error(
-      `${command} ${arguments_.join(" ")} failed with status ${result.status ?? 1}${diagnostics ? `\n${diagnostics}` : ""}`,
+      `${command} ${arguments_.join(" ")} ${outcome}${diagnostics ? `\n${diagnostics}` : ""}`,
     );
   }
   return result;
@@ -181,9 +184,11 @@ function checkDiagnostics(clang, clangd, directory) {
         "-I",
         variant.includeDirectory,
         ...warningArguments,
-        // Clangd checks headers and included helpers without all their callers.
-        "-Wno-unused-function",
-        ...(source === variant.source ? [] : variant.contractArguments),
+        // The included scanner's helpers look unused to clangd, which drops
+        // those diagnostics but still counts them toward its error limit.
+        ...(source === variant.source
+          ? []
+          : ["-Wno-unused-function", ...variant.contractArguments]),
         "-fsyntax-only",
         source,
       ],
