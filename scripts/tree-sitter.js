@@ -57,7 +57,11 @@ function treeSitterExecutable() {
       process.platform === "win32" ? "tree-sitter.exe" : "tree-sitter",
     );
   } catch (error) {
-    if (error.code === "ERR_MODULE_NOT_FOUND") {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "ERR_MODULE_NOT_FOUND"
+    ) {
       throw new Error(missingCliMessage, { cause: error });
     }
     throw error;
@@ -322,7 +326,7 @@ if (import.meta.main) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
-    console.error(error.message);
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 }

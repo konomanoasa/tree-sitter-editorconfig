@@ -91,6 +91,19 @@
           }
         },
         {
+          "type": "FIELD",
+          "name": "issue",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_incomplete_line_ending_issue"
+            },
+            "named": true,
+            "value": "syntax_issue"
+          }
+        },
+        {
           "type": "SYMBOL",
           "name": "_eof"
         }
@@ -831,6 +844,24 @@
       "named": true,
       "value": "invalid_syntax"
     },
+    "_incomplete_line_ending_outcome": {
+      "type": "ALIAS",
+      "content": {
+        "type": "SYMBOL",
+        "name": "_incomplete_line_ending"
+      },
+      "named": true,
+      "value": "invalid_line_ending"
+    },
+    "_incomplete_line_ending_issue": {
+      "type": "ALIAS",
+      "content": {
+        "type": "SYMBOL",
+        "name": "_incomplete_line_ending_outcome"
+      },
+      "named": true,
+      "value": "incomplete_syntax"
+    },
     "_invalid_escape_outcome": {
       "type": "ALIAS",
       "content": {
@@ -1148,6 +1179,10 @@
     {
       "type": "SYMBOL",
       "name": "_invalid_line_ending"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_incomplete_line_ending"
     },
     {
       "type": "SYMBOL",

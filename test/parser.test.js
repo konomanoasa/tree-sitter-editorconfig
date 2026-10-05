@@ -5,6 +5,8 @@ import { issues, leaves, owners, parse } from "./support/parser.js";
 
 test("editorconfig: public issue nodes have one outcome and one reason leaf", () => {
   const issue = nodeTypes.find(({ type }) => type === "syntax_issue");
+  assert.ok(issue);
+  assert.ok(issue.children);
   assert.equal(issue.children.required, true);
   assert.equal(issue.children.multiple, false);
   assert.deepEqual(
@@ -13,10 +15,13 @@ test("editorconfig: public issue nodes have one outcome and one reason leaf", ()
   );
   for (const { type } of issue.children.types) {
     const outcome = nodeTypes.find((node) => node.type === type);
+    assert.ok(outcome, type);
+    assert.ok(outcome.children, type);
     assert.equal(outcome.children.required, true);
     assert.equal(outcome.children.multiple, false);
     for (const child of outcome.children.types) {
       const reason = nodeTypes.find((node) => node.type === child.type);
+      assert.ok(reason, child.type);
       assert.equal(reason.children, undefined);
     }
   }
@@ -213,47 +218,61 @@ for (const [name, source, expected] of validCases) {
 }
 
 const incompleteCases = [
-  ["assignment", "key", [["missing_assignment_operator", 3, "pair"]]],
-  ["header", "[a", [["missing_section_close", 2, "section_header"]]],
-  [
-    "literal brace backslash and header",
-    "[{a\\",
-    [["missing_section_close", 4, "section_header"]],
-  ],
-  [
-    "set and header",
-    "[[a",
-    [
-      ["missing_set_close", 3, "character_set"],
-      ["missing_section_close", 3, "section_header"],
+  {
+    name: "assignment",
+    source: "key",
+    reasons: [
+      { reason: "missing_assignment_operator", byte: 3, owner: "pair" },
     ],
-  ],
-  [
-    "alternation and header",
-    "[{a,b",
-    [
-      ["missing_brace_close", 5, "alternation"],
-      ["missing_section_close", 5, "section_header"],
+  },
+  {
+    name: "header",
+    source: "[a",
+    reasons: [
+      { reason: "missing_section_close", byte: 2, owner: "section_header" },
     ],
-  ],
-  [
-    "range and header",
-    "[{1..2",
-    [
-      ["missing_brace_close", 6, "numeric_range"],
-      ["missing_section_close", 6, "section_header"],
+  },
+  {
+    name: "literal brace backslash and header",
+    source: "[{a\\",
+    reasons: [
+      { reason: "missing_section_close", byte: 4, owner: "section_header" },
     ],
-  ],
-  [
-    "escape and header",
-    "[a\\",
-    [
-      ["incomplete_escape", 2, "pattern", 3],
-      ["missing_section_close", 3, "section_header"],
+  },
+  {
+    name: "set and header",
+    source: "[[a",
+    reasons: [
+      { reason: "missing_set_close", byte: 3, owner: "character_set" },
+      { reason: "missing_section_close", byte: 3, owner: "section_header" },
     ],
-  ],
+  },
+  {
+    name: "alternation and header",
+    source: "[{a,b",
+    reasons: [
+      { reason: "missing_brace_close", byte: 5, owner: "alternation" },
+      { reason: "missing_section_close", byte: 5, owner: "section_header" },
+    ],
+  },
+  {
+    name: "range and header",
+    source: "[{1..2",
+    reasons: [
+      { reason: "missing_brace_close", byte: 6, owner: "numeric_range" },
+      { reason: "missing_section_close", byte: 6, owner: "section_header" },
+    ],
+  },
+  {
+    name: "escape and header",
+    source: "[a\\",
+    reasons: [
+      { reason: "incomplete_escape", byte: 2, owner: "pattern", end: 3 },
+      { reason: "missing_section_close", byte: 3, owner: "section_header" },
+    ],
+  },
 ];
-for (const [name, source, reasons] of incompleteCases) {
+for (const { name, source, reasons } of incompleteCases) {
   for (const [suffix, outcome] of [
     ["", "incomplete_syntax"],
     ["  ", "incomplete_syntax"],
@@ -264,7 +283,7 @@ for (const [name, source, reasons] of incompleteCases) {
       const tree = parse(source + suffix);
       assert.deepEqual(
         issues(tree),
-        reasons.map(([reason, byte, , end = byte]) => [
+        reasons.map(({ reason, byte, end = byte }) => [
           outcome,
           reason,
           byte,
@@ -275,7 +294,7 @@ for (const [name, source, reasons] of incompleteCases) {
         assert.ok(!tree.some(({ kind }) => kind === "escape"));
       assert.deepEqual(
         owners(tree),
-        reasons.map(([, , owner]) => owner),
+        reasons.map(({ owner }) => owner),
       );
     });
   }
@@ -354,7 +373,7 @@ for (const [name, source, expected, owner] of [
   [
     "standalone CR",
     "a=b\r",
-    [["invalid_syntax", "invalid_line_ending", 3, 4]],
+    [["incomplete_syntax", "invalid_line_ending", 3, 4]],
     "pair",
   ],
   [
@@ -364,56 +383,94 @@ for (const [name, source, expected, owner] of [
     "value",
   ],
 ]) {
-  test(`editorconfig: ${name} at EOF remains an input violation`, () => {
+  test(`editorconfig: ${name} at EOF is classified by whether appending repairs it`, () => {
     const tree = parse(source);
     assert.deepEqual(issues(tree), expected);
     assert.deepEqual(owners(tree), [owner]);
   });
 }
 
-for (const [name, prefix, suffix, owner, expectedLeaves] of [
-  ["key", "k", "ey=v", "key"],
-  ["value", "k=v", "alue", "value"],
-  ["comment", "# a", "b", "comment"],
-  ["glob", "[a", "b]", "pattern"],
-  ["set", "[[a", "b]]", "character_set"],
-  ["literal brace", "[{a", "b}]", "pattern"],
-  ["numeric range", "[{1..2", "}]", "numeric_range"],
-  [
-    "escape",
-    "[\\",
-    "a]",
-    "pattern",
-    [
+for (const [source, owner] of [
+  ["\r", "blank_line"],
+  ["# a\r", "comment"],
+  ["[a]\r", "section_header"],
+]) {
+  test(`editorconfig: a final CR belongs to its ${owner}`, () => {
+    const tree = parse(source);
+    assert.deepEqual(issues(tree), [
+      [
+        "incomplete_syntax",
+        "invalid_line_ending",
+        source.length - 1,
+        source.length,
+      ],
+    ]);
+    assert.deepEqual(owners(tree), [owner]);
+  });
+}
+
+test("editorconfig: a final CR does not make missing delimiters before it repairable by appending", () => {
+  const tree = parse("[[a\r");
+  assert.deepEqual(issues(tree), [
+    ["invalid_syntax", "missing_set_close", 3, 3],
+    ["invalid_syntax", "missing_section_close", 3, 3],
+    ["incomplete_syntax", "invalid_line_ending", 3, 4],
+  ]);
+  assert.deepEqual(owners(tree), [
+    "character_set",
+    "section_header",
+    "section_header",
+  ]);
+});
+
+for (const { name, prefix, suffix, owner, expectedLeaves } of [
+  { name: "key", prefix: "k", suffix: "ey=v", owner: "key" },
+  { name: "value", prefix: "k=v", suffix: "alue", owner: "value" },
+  { name: "comment", prefix: "# a", suffix: "b", owner: "comment" },
+  { name: "glob", prefix: "[a", suffix: "b]", owner: "pattern" },
+  { name: "set", prefix: "[[a", suffix: "b]]", owner: "character_set" },
+  { name: "literal brace", prefix: "[{a", suffix: "b}]", owner: "pattern" },
+  {
+    name: "numeric range",
+    prefix: "[{1..2",
+    suffix: "}]",
+    owner: "numeric_range",
+  },
+  {
+    name: "escape",
+    prefix: "[\\",
+    suffix: "a]",
+    owner: "pattern",
+    expectedLeaves: [
       ["section_open", "["],
-      ["invalid_encoding", "\uFFFD"],
+      ["invalid_encoding", "\uFFFD\uFFFD\uFFFD"],
       ["glob_literal", "a"],
       ["section_close", "]"],
     ],
-  ],
-  [
-    "literal brace backslash",
-    "[{a\\",
-    "}]",
-    "pattern",
-    [
+  },
+  {
+    name: "literal brace backslash",
+    prefix: "[{a\\",
+    suffix: "}]",
+    owner: "pattern",
+    expectedLeaves: [
       ["section_open", "["],
       ["glob_literal", "{a\\"],
-      ["invalid_encoding", "\uFFFD"],
+      ["invalid_encoding", "\uFFFD\uFFFD\uFFFD"],
       ["glob_literal", "}"],
       ["section_close", "]"],
     ],
-  ],
+  },
 ]) {
-  test(`editorconfig: invalid UTF-8 inside ${name} has an isolated range`, () => {
+  test(`editorconfig: an invalid UTF-8 run inside ${name} has an isolated range`, () => {
     const source = Buffer.concat([
       Buffer.from(prefix),
-      Buffer.from([255]),
+      Buffer.from([255, 254, 128]),
       Buffer.from(suffix),
     ]);
     const tree = parse(source);
     assert.deepEqual(issues(tree), [
-      ["invalid_syntax", "invalid_encoding", prefix.length, prefix.length + 1],
+      ["invalid_syntax", "invalid_encoding", prefix.length, prefix.length + 3],
     ]);
     assert.deepEqual(owners(tree), [owner]);
     if (expectedLeaves) assert.deepEqual(leaves(source, tree), expectedLeaves);
@@ -456,31 +513,31 @@ test("editorconfig: only issues carry the issue field after an undecodable escap
   );
 });
 
-for (const [name, suffix, expected, expectedOwners, tail] of [
-  [
-    "at EOF",
-    "",
-    [
+for (const { name, suffix, expected, expectedOwners, tail } of [
+  {
+    name: "at EOF",
+    suffix: "",
+    expected: [
       ["invalid_syntax", "invalid_encoding", 6, 7],
       ["incomplete_syntax", "missing_brace_close", 7, 7],
       ["incomplete_syntax", "missing_section_close", 7, 7],
     ],
-    ["numeric_range", "numeric_range", "section_header"],
-    [],
-  ],
-  [
-    "before source that cannot continue it",
-    "3}]",
-    [
+    expectedOwners: ["numeric_range", "numeric_range", "section_header"],
+    tail: [],
+  },
+  {
+    name: "before source that cannot continue it",
+    suffix: "3}]",
+    expected: [
       ["invalid_syntax", "invalid_encoding", 6, 7],
       ["invalid_syntax", "missing_brace_close", 7, 7],
     ],
-    ["numeric_range", "numeric_range"],
-    [
+    expectedOwners: ["numeric_range", "numeric_range"],
+    tail: [
       ["glob_literal", "3}"],
       ["section_close", "]"],
     ],
-  ],
+  },
 ]) {
   test(`editorconfig: a numeric range cut by undecodable source lacks its closing ${name}`, () => {
     const source = Buffer.concat([

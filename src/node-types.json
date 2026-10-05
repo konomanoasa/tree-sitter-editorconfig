@@ -198,6 +198,10 @@
           "named": true
         },
         {
+          "type": "invalid_line_ending",
+          "named": true
+        },
+        {
           "type": "missing_assignment_operator",
           "named": true
         },

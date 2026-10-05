@@ -133,3 +133,17 @@ A lone backslash is an issue before the section close
         issue: (syntax_issue (invalid_syntax (incomplete_escape))))
       closing: (section_close)
       (line_ending))))
+
+==================
+An unfinished CR keeps the line-ending reason at EOF
+==================
+a=b
+---
+
+(document
+  (preamble
+    (pair
+      key: (key (key_text))
+      operator: (assignment_operator)
+      value: (value (value_text))
+      issue: (syntax_issue (incomplete_syntax (invalid_line_ending))))))

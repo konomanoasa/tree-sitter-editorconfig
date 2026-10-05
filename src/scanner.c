@@ -35,6 +35,7 @@ enum Token {
   RANGE_SEPARATOR,
   INVALID_ENCODING,
   INVALID_LINE_ENDING,
+  INCOMPLETE_LINE_ENDING,
   /* boundary_issue requires adjacent invalid/incomplete token pairs. */
   INVALID_ESCAPE,
   INCOMPLETE_ESCAPE,
@@ -103,7 +104,13 @@ static void skip(Scanner *s, TSLexer *lexer) {
 
 static bool
 take(Scanner *s, TSLexer *lexer, const bool *valid, enum Token token) {
-  advance(s, lexer);
+  do {
+    advance(s, lexer);
+  } while (
+    token == INVALID_ENCODING && lexer->lookahead == -1 && !lexer->eof(lexer)
+  );
+  if (token == INVALID_ENCODING && !lexer->eof(lexer))
+    lexer->advance(lexer, false);
   return emit(lexer, valid, token);
 }
 
@@ -164,7 +171,7 @@ static bool end_line(Scanner *s, TSLexer *lexer, const bool *valid) {
     token = LINE_ENDING;
   } else if (lexer->lookahead == '\r') {
     lexer->advance(lexer, false);
-    token = INVALID_LINE_ENDING;
+    token = lexer->eof(lexer) ? INCOMPLETE_LINE_ENDING : INVALID_LINE_ENDING;
     if (lexer->lookahead == '\n') {
       lexer->advance(lexer, false);
       token = LINE_ENDING;

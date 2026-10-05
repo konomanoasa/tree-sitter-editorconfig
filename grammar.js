@@ -8,6 +8,7 @@ const missing = [
 const issueTokens = [
   ["invalid_encoding", "invalid_syntax", "invalid_encoding"],
   ["invalid_line_ending", "invalid_syntax", "invalid_line_ending"],
+  ["incomplete_line_ending", "incomplete_syntax", "invalid_line_ending"],
   ["invalid_escape", "invalid_syntax", "incomplete_escape"],
   ["incomplete_escape", "incomplete_syntax", "incomplete_escape"],
   ...missing.flatMap((name) => [
@@ -81,7 +82,13 @@ export default grammar({
     section: ($) =>
       seq(field("header", $.section_header), repeat($._body_line)),
     _body_line: ($) => choice($.blank_line, $.comment, $.pair),
-    _end: ($) => choice($.line_ending, issue($, "invalid_line_ending"), $._eof),
+    _end: ($) =>
+      choice(
+        $.line_ending,
+        issue($, "invalid_line_ending"),
+        issue($, "incomplete_line_ending"),
+        $._eof,
+      ),
     blank_line: ($) => seq($._blank_start, $._end),
     comment: ($) =>
       seq(

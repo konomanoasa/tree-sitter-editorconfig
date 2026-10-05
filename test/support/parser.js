@@ -60,6 +60,8 @@ function parse(source, edits = []) {
   writeFileSync(path, source);
   const text = run([
     "parse",
+    "--encoding",
+    "utf8",
     "--config-path",
     configuration,
     "--lib-path",

@@ -14,7 +14,9 @@ import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { copyFiles, packageName, root } from "../scripts/tree-sitter.js";
 
-const configuration = JSON.parse(readFileSync(join(root, "tree-sitter.json")));
+const configuration = JSON.parse(
+  readFileSync(join(root, "tree-sitter.json"), "utf8"),
+);
 const grammars = configuration.grammars.map((grammar) => ({
   ...grammar,
   externalFiles: [].concat(grammar["external-files"] ?? []),
@@ -220,6 +222,9 @@ test(`${language}: corpus fuzz propagates CLI failures even when its exit status
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 const fixture = ${JSON.stringify(fixture)};
+if (fixture.error) {
+  fixture.error = Object.assign(new Error(fixture.error.message), fixture.error);
+}
 childProcess.spawnSync = (_command, arguments_) => {
   if (arguments_.includes("build")) return { status: 0, stdout: "", stderr: "" };
   if (arguments_.includes("fuzz")) return fixture;
@@ -263,7 +268,7 @@ syncBuiltinESMExports();
 
 test(`${language}: package metadata matches the grammar and license`, () => {
   const { metadata } = configuration;
-  const pkg = JSON.parse(readFileSync(join(root, "package.json")));
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   for (const key of ["version", "license", "description"])
     assert.equal(pkg[key], metadata[key]);
   assert.equal(pkg.repository, `git+${metadata.links.repository}.git`);

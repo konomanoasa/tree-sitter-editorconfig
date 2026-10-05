@@ -3,139 +3,173 @@ import { test } from "node:test";
 import { applyEdits, issues, parse } from "./support/parser.js";
 
 const cases = [
-  [
-    "complete an escape at EOF",
-    "[a\\",
-    [{ byte: 3, deleteBytes: 0, insert: "*]" }],
-  ],
-  [
-    "remove the escaped character",
-    "[a\\*]",
-    [{ byte: 3, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "close a header after an incomplete escape",
-    "[a\\",
-    [{ byte: 3, deleteBytes: 0, insert: "]" }],
-  ],
-  [
-    "end a line after an incomplete escape",
-    "[a\\",
-    [{ byte: 3, deleteBytes: 0, insert: "\n" }],
-  ],
-  [
-    "split an escaped UTF-8 character",
-    "[\\é]",
-    [{ byte: 3, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "repair an undecodable escaped character",
-    Buffer.from([91, 92, 255, 93]),
-    [{ byte: 2, deleteBytes: 1, insert: "*" }],
-  ],
-  ["value replacement", "a=b\n", [{ byte: 2, deleteBytes: 1, insert: "c" }]],
-  [
-    "complete a missing assignment",
-    "key",
-    [{ byte: 3, deleteBytes: 0, insert: "=value" }],
-  ],
-  [
-    "remove an assignment",
-    "key=value",
-    [{ byte: 3, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "turn a pair into a header",
-    "[a=b",
-    [{ byte: 4, deleteBytes: 0, insert: "]" }],
-  ],
-  [
-    "turn a header into a pair",
-    "[a=b]",
-    [{ byte: 4, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "close a set and header",
-    "[[a",
-    [{ byte: 3, deleteBytes: 0, insert: "]]" }],
-  ],
-  [
-    "remove inner set close",
-    "[[a]]",
-    [{ byte: 3, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "change the final bracket ownership",
-    "[a]",
-    [{ byte: 2, deleteBytes: 0, insert: "]x" }],
-  ],
-  ["end an incomplete line", "[a", [{ byte: 2, deleteBytes: 0, insert: "\n" }]],
-  [
-    "reopen an incomplete line",
-    "[a\n",
-    [{ byte: 2, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "change literal braces into alternatives",
-    "[{a}]",
-    [{ byte: 3, deleteBytes: 0, insert: ",b" }],
-  ],
-  [
-    "change alternatives into literal braces",
-    "[{a,b}]",
-    [{ byte: 3, deleteBytes: 2, insert: "" }],
-  ],
-  [
-    "nested alternative edit",
-    "[{a,{b,c}}]",
-    [{ byte: 7, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "numeric bounds edit",
-    "[{1..2}]",
-    [{ byte: 2, deleteBytes: 1, insert: "word" }],
-  ],
-  [
-    "multibyte value replacement",
-    "日本=値\n",
-    [{ byte: 7, deleteBytes: 3, insert: "別" }],
-  ],
-  [
-    "CRLF becomes lone CR",
-    "a=b\r\nx=y\n",
-    [{ byte: 4, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "incomplete source before an intact section",
-    "[a\n[b]\nx=y\n",
-    [{ byte: 2, deleteBytes: 0, insert: "]" }],
-  ],
-  [
-    "remove a whole header",
-    "[a]\nx=y\n",
-    [{ byte: 0, deleteBytes: 4, insert: "" }],
-  ],
-  [
-    "padding affects header name only after completion",
-    "[a  ",
-    [{ byte: 4, deleteBytes: 0, insert: "]" }],
-  ],
-  [
-    "split a character after a numeric range",
-    "[{1..2é}]",
-    [{ byte: 7, deleteBytes: 1, insert: "" }],
-  ],
-  [
-    "split the character that ends a numeric range cut by undecodable source",
-    Buffer.concat([
+  {
+    name: "complete and reopen a final CR",
+    source: "a=b\r",
+    edits: [
+      { byte: 4, deleteBytes: 0, insert: "\n" },
+      { byte: 4, deleteBytes: 1, insert: "" },
+    ],
+  },
+  {
+    name: "make a final CR invalid by starting another line",
+    source: "a=b\r",
+    edits: [{ byte: 4, deleteBytes: 0, insert: "c=d" }],
+  },
+  {
+    name: "split and merge a decoding failure inside a numeric range",
+    source: Buffer.from([91, 123, 49, 46, 46, 50, 255, 254, 128, 125, 93]),
+    edits: [
+      { byte: 7, deleteBytes: 0, insert: "é" },
+      { byte: 7, deleteBytes: 2, insert: "" },
+    ],
+  },
+  {
+    name: "repair a decoding failure after a backslash",
+    source: Buffer.from([91, 92, 255, 254, 128, 93]),
+    edits: [{ byte: 2, deleteBytes: 3, insert: "*" }],
+  },
+  {
+    name: "complete an escape at EOF",
+    source: "[a\\",
+    edits: [{ byte: 3, deleteBytes: 0, insert: "*]" }],
+  },
+  {
+    name: "remove the escaped character",
+    source: "[a\\*]",
+    edits: [{ byte: 3, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "close a header after an incomplete escape",
+    source: "[a\\",
+    edits: [{ byte: 3, deleteBytes: 0, insert: "]" }],
+  },
+  {
+    name: "end a line after an incomplete escape",
+    source: "[a\\",
+    edits: [{ byte: 3, deleteBytes: 0, insert: "\n" }],
+  },
+  {
+    name: "split an escaped UTF-8 character",
+    source: "[\\é]",
+    edits: [{ byte: 3, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "repair an undecodable escaped character",
+    source: Buffer.from([91, 92, 255, 93]),
+    edits: [{ byte: 2, deleteBytes: 1, insert: "*" }],
+  },
+  {
+    name: "value replacement",
+    source: "a=b\n",
+    edits: [{ byte: 2, deleteBytes: 1, insert: "c" }],
+  },
+  {
+    name: "complete a missing assignment",
+    source: "key",
+    edits: [{ byte: 3, deleteBytes: 0, insert: "=value" }],
+  },
+  {
+    name: "remove an assignment",
+    source: "key=value",
+    edits: [{ byte: 3, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "turn a pair into a header",
+    source: "[a=b",
+    edits: [{ byte: 4, deleteBytes: 0, insert: "]" }],
+  },
+  {
+    name: "turn a header into a pair",
+    source: "[a=b]",
+    edits: [{ byte: 4, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "close a set and header",
+    source: "[[a",
+    edits: [{ byte: 3, deleteBytes: 0, insert: "]]" }],
+  },
+  {
+    name: "remove inner set close",
+    source: "[[a]]",
+    edits: [{ byte: 3, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "change the final bracket ownership",
+    source: "[a]",
+    edits: [{ byte: 2, deleteBytes: 0, insert: "]x" }],
+  },
+  {
+    name: "end an incomplete line",
+    source: "[a",
+    edits: [{ byte: 2, deleteBytes: 0, insert: "\n" }],
+  },
+  {
+    name: "reopen an incomplete line",
+    source: "[a\n",
+    edits: [{ byte: 2, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "change literal braces into alternatives",
+    source: "[{a}]",
+    edits: [{ byte: 3, deleteBytes: 0, insert: ",b" }],
+  },
+  {
+    name: "change alternatives into literal braces",
+    source: "[{a,b}]",
+    edits: [{ byte: 3, deleteBytes: 2, insert: "" }],
+  },
+  {
+    name: "nested alternative edit",
+    source: "[{a,{b,c}}]",
+    edits: [{ byte: 7, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "numeric bounds edit",
+    source: "[{1..2}]",
+    edits: [{ byte: 2, deleteBytes: 1, insert: "word" }],
+  },
+  {
+    name: "multibyte value replacement",
+    source: "日本=値\n",
+    edits: [{ byte: 7, deleteBytes: 3, insert: "別" }],
+  },
+  {
+    name: "CRLF becomes lone CR",
+    source: "a=b\r\nx=y\n",
+    edits: [{ byte: 4, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "incomplete source before an intact section",
+    source: "[a\n[b]\nx=y\n",
+    edits: [{ byte: 2, deleteBytes: 0, insert: "]" }],
+  },
+  {
+    name: "remove a whole header",
+    source: "[a]\nx=y\n",
+    edits: [{ byte: 0, deleteBytes: 4, insert: "" }],
+  },
+  {
+    name: "padding affects header name only after completion",
+    source: "[a  ",
+    edits: [{ byte: 4, deleteBytes: 0, insert: "]" }],
+  },
+  {
+    name: "split a character after a numeric range",
+    source: "[{1..2é}]",
+    edits: [{ byte: 7, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "split the character that ends a numeric range cut by undecodable source",
+    source: Buffer.concat([
       Buffer.from("[{1..2"),
       Buffer.from([255]),
       Buffer.from("é}]"),
     ]),
-    [{ byte: 8, deleteBytes: 1, insert: "" }],
-  ],
+    edits: [{ byte: 8, deleteBytes: 1, insert: "" }],
+  },
 ];
-for (const [name, source, edits] of cases) {
+for (const { name, source, edits } of cases) {
   test(`editorconfig: ${name}`, () => {
     assert.deepEqual(parse(source, edits), parse(applyEdits(source, edits)));
   });
