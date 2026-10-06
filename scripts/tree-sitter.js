@@ -102,7 +102,6 @@ function createTreeSitter() {
     mkdirSync(cacheDirectory, { recursive: true });
     mkdirSync(libraryDirectory);
     mkdirSync(treeSitterConfigDirectory, { recursive: true });
-    // CLI discovery requires a tree-sitter-* entry regardless of checkout name.
     copyFiles(
       [
         "tree-sitter.json",
@@ -146,6 +145,9 @@ function createTreeSitter() {
         ...options,
         env: {
           ...process.env,
+          ...(process.platform === "darwin"
+            ? { CC: process.env.CC ?? "clang" }
+            : {}),
           APPDATA: configDirectory,
           LOCALAPPDATA: cacheDirectory,
           NO_COLOR: "1",
@@ -281,7 +283,6 @@ function fuzzParsers(runner, arguments_) {
       process.stderr.write(result.stderr ?? "");
       const status = resultStatus(result);
       if (status !== 0) return status;
-      // The CLI can report failed fuzz cases while returning exit status zero.
       if (
         /^[1-9][0-9]* .+ corpus tests failed fuzzing$/m.test(
           result.stdout + result.stderr,
@@ -295,6 +296,47 @@ function fuzzParsers(runner, arguments_) {
   }
 }
 
+function checkQueries() {
+  const configuration = JSON.parse(
+    readFileSync(join(root, ".tsqueryrc.json"), "utf8"),
+  );
+  for (const grammar of grammars) {
+    const parserAliases = { ...configuration.parser_aliases };
+    for (const { name } of grammars) {
+      if (name === grammar.name) delete parserAliases[name];
+      else parserAliases[name] = grammar.name;
+    }
+    const directories = [...new Set(grammar.highlights.map(dirname))];
+    const settings = { ...configuration, parser_aliases: parserAliases };
+    const result = spawnSync(
+      "ts_query_ls",
+      [
+        "check",
+        "--format",
+        "--config",
+        JSON.stringify(settings),
+        ...directories,
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 60_000,
+        killSignal: "SIGKILL",
+      },
+    );
+    process.stdout.write(result.stdout ?? "");
+    process.stderr.write(result.stderr ?? "");
+    if (result.error) throw result.error;
+    if (result.signal) {
+      process.stderr.write(`ts_query_ls terminated by ${result.signal}.\n`);
+      return 1;
+    }
+    if (result.status !== 0) return result.status ?? 1;
+    console.log(`${grammar.name}: reference queries passed`);
+  }
+  return 0;
+}
+
 function main(arguments_) {
   const [command, ...rest] = arguments_;
   if (command === "generate-all") {
@@ -302,6 +344,12 @@ function main(arguments_) {
       throw new Error("Usage: node scripts/tree-sitter.js generate-all");
     }
     return generateParsers();
+  }
+  if (command === "check-queries") {
+    if (rest.length !== 0) {
+      throw new Error("Usage: node scripts/tree-sitter.js check-queries");
+    }
+    return checkQueries();
   }
   if (command === "test-corpus") {
     return testCorpus(rest);
@@ -320,6 +368,10 @@ function main(arguments_) {
   } finally {
     runner.close();
   }
+}
+
+if (import.meta.main === undefined) {
+  throw new Error("Node.js 24.21.0 or later is required.");
 }
 
 if (import.meta.main) {

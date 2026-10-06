@@ -125,6 +125,29 @@ const cases = [
     edits: [{ byte: 7, deleteBytes: 1, insert: "" }],
   },
   {
+    name: "reclassify nested braces without changing line length",
+    source: "[{{a,b},}]\n[{{a,b},}]\n",
+    edits: [
+      { byte: 4, deleteBytes: 1, insert: "x" },
+      { byte: 15, deleteBytes: 1, insert: "x" },
+      { byte: 4, deleteBytes: 1, insert: "," },
+      { byte: 15, deleteBytes: 1, insert: "," },
+    ],
+  },
+  {
+    name: "repair and reopen a nested brace classification cut by decoding failure",
+    source: Buffer.concat([
+      Buffer.from("[{{a"),
+      Buffer.from([255]),
+      Buffer.from("b},}]"),
+    ]),
+    edits: [
+      { byte: 4, deleteBytes: 1, insert: "," },
+      { byte: 4, deleteBytes: 1, insert: "é" },
+      { byte: 5, deleteBytes: 1, insert: "" },
+    ],
+  },
+  {
     name: "numeric bounds edit",
     source: "[{1..2}]",
     edits: [{ byte: 2, deleteBytes: 1, insert: "word" }],
@@ -171,7 +194,14 @@ const cases = [
 ];
 for (const { name, source, edits } of cases) {
   test(`editorconfig: ${name}`, () => {
-    assert.deepEqual(parse(source, edits), parse(applyEdits(source, edits)));
+    for (let count = 1; count <= edits.length; count++) {
+      const history = edits.slice(0, count);
+      assert.deepEqual(
+        parse(source, history),
+        parse(applyEdits(source, history)),
+        `after edit ${count}`,
+      );
+    }
   });
 }
 

@@ -1,4 +1,4 @@
-const missing = [
+const missingElements = [
   "assignment_operator",
   "section_close",
   "set_close",
@@ -11,7 +11,7 @@ const issueTokens = [
   ["incomplete_line_ending", "incomplete_syntax", "invalid_line_ending"],
   ["invalid_escape", "invalid_syntax", "incomplete_escape"],
   ["incomplete_escape", "incomplete_syntax", "incomplete_escape"],
-  ...missing.flatMap((name) => [
+  ...missingElements.flatMap((name) => [
     [`invalid_missing_${name}`, "invalid_syntax", `missing_${name}`],
     [`incomplete_missing_${name}`, "incomplete_syntax", `missing_${name}`],
   ]),
@@ -33,6 +33,10 @@ function absent($, name) {
     issue($, `invalid_missing_${name}`),
     issue($, `incomplete_missing_${name}`),
   );
+}
+
+function closing($, name) {
+  return choice(field("closing", $[name]), absent($, name));
 }
 
 function pieces($, text) {
@@ -82,6 +86,7 @@ export default grammar({
     section: ($) =>
       seq(field("header", $.section_header), repeat($._body_line)),
     _body_line: ($) => choice($.blank_line, $.comment, $.pair),
+
     _end: ($) =>
       choice(
         $.line_ending,
@@ -112,12 +117,13 @@ export default grammar({
       ),
     key: ($) => repeat1(pieces($, $.key_text)),
     value: ($) => repeat1(pieces($, $.value_text)),
+
     section_header: ($) =>
       seq(
         $._header_start,
         field("opening", $.section_open),
         optional(field("name", $.pattern)),
-        choice(field("closing", $.section_close), absent($, "section_close")),
+        closing($, "section_close"),
         $._end,
       ),
     pattern: ($) =>
@@ -145,14 +151,14 @@ export default grammar({
         field("opening", $.set_open),
         optional(field("negation", $.set_negation)),
         repeat(pieces($, $.set_text)),
-        choice(field("closing", $.set_close), absent($, "set_close")),
+        closing($, "set_close"),
       ),
     alternation: ($) =>
       seq(
         field("opening", alias($._alternation_open, $.brace_open)),
         optional($.pattern),
         repeat1(seq($.alternative_separator, optional($.pattern))),
-        choice(field("closing", $.brace_close), absent($, "brace_close")),
+        closing($, "brace_close"),
       ),
     numeric_range: ($) =>
       seq(
@@ -161,8 +167,9 @@ export default grammar({
         $.range_separator,
         field("upper", $.integer),
         repeat(issue($, "invalid_encoding")),
-        choice(field("closing", $.brace_close), absent($, "brace_close")),
+        closing($, "brace_close"),
       ),
+
     _unmatchable: () => token(seq(/[\s\S]/, /[^\s\S]/)),
     ...issueRules,
   },

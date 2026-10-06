@@ -17,6 +17,8 @@ import { grammars, packageName, root } from "./tree-sitter.js";
 const enumerators = { _eof: "END_OF_FILE" };
 const tokenCount = "ERROR_SENTINEL + 1";
 
+const scannerDiagnosticArguments = [];
+
 const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
 const scannerContract = join(root, "test", "scanner.test.c");
 const contracts = [scannerContract];
@@ -181,10 +183,9 @@ function checkDiagnostics(clang, clangd, directory) {
         "-I",
         variant.includeDirectory,
         ...warningArguments,
-        // The included scanner's helpers look unused to clangd, which drops
-        // those diagnostics but still counts them toward its error limit.
+        // Clangd checks headers and included helpers without all their callers.
         ...(source === variant.source
-          ? []
+          ? scannerDiagnosticArguments
           : ["-Wno-unused-function", ...variant.contractArguments]),
         "-fsyntax-only",
         source,

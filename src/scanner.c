@@ -50,7 +50,7 @@ enum Token {
   ERROR_SENTINEL
 };
 
-/* The kinds after LINE_START follow the order of the line start tokens. */
+/* BLANK_LINE onward follows the line start token order. */
 enum Line { LINE_START, BLANK_LINE, COMMENT_LINE, PAIR_LINE, HEADER_LINE };
 
 enum Range {
@@ -231,7 +231,6 @@ static enum Range range_step(enum Range state, int32_t c) {
   }
 }
 
-/* Leave a non-leading structural brace for the next token. */
 static enum Token brace(Scanner *s, TSLexer *lexer, bool leading) {
   uint32_t position = s->position + 1, depth = 1;
   enum Range range = RANGE_START;
@@ -349,16 +348,17 @@ static bool set(Scanner *s, TSLexer *lexer, const bool *valid) {
     return take(s, lexer, valid, SET_CLOSE);
   if (c == '!' && valid[SET_NEGATION])
     return take(s, lexer, valid, SET_NEGATION);
-  while (s->position < s->glob_end) {
-    c = lexer->lookahead;
-    if (c == ']' || c == -1)
-      break;
+  while (
+    s->position <
+    s->glob_end &&
+    lexer->lookahead !=
+    ']' &&
+    lexer->lookahead != -1
+  )
     advance(s, lexer);
-  }
   return emit(lexer, valid, SET_TEXT);
 }
 
-/* The brace scan guarantees the bounds and separator of a numeric range. */
 static bool integer(Scanner *s, TSLexer *lexer, const bool *valid) {
   if (lexer->lookahead == '-')
     advance(s, lexer);
@@ -367,7 +367,6 @@ static bool integer(Scanner *s, TSLexer *lexer, const bool *valid) {
   return emit(lexer, valid, INTEGER);
 }
 
-/* Incremental parsing can resume with only a glob delimiter valid. */
 static bool glob(Scanner *s, TSLexer *lexer, const bool *valid) {
   int32_t c = lexer->lookahead;
   if (c == -1)
@@ -385,7 +384,7 @@ static bool glob(Scanner *s, TSLexer *lexer, const bool *valid) {
   if (c == ',' && valid[ALTERNATIVE_SEPARATOR])
     return take(s, lexer, valid, ALTERNATIVE_SEPARATOR);
   if (!valid[GLOB_LITERAL]) {
-    /* Cover the whole next character so edits to it retire this token. */
+    /* Edits to the next character must invalidate this token. */
     lexer->mark_end(lexer);
     lexer->advance(lexer, false);
     return emit(lexer, valid, INVALID_MISSING_BRACE_CLOSE);

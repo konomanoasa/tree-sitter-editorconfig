@@ -134,6 +134,43 @@ const validCases = [
     ],
   ],
   [
+    "consecutive stars retain each glob atom",
+    "[***/****]",
+    [
+      ["section_open", "["],
+      ["recursive_wildcard", "**"],
+      ["wildcard", "*"],
+      ["path_separator", "/"],
+      ["recursive_wildcard", "**"],
+      ["recursive_wildcard", "**"],
+      ["section_close", "]"],
+    ],
+  ],
+  [
+    "escaped closing braces do not end alternatives",
+    "[{a\\}b,c}]",
+    [
+      ["section_open", "["],
+      ["brace_open", "{"],
+      ["glob_literal", "a"],
+      ["escape", "\\}"],
+      ["glob_literal", "b"],
+      ["alternative_separator", ","],
+      ["glob_literal", "c"],
+      ["brace_close", "}"],
+      ["section_close", "]"],
+    ],
+  ],
+  [
+    "escaped commas and set contents do not classify literal braces as alternatives",
+    "[{a\\,b}{[,]c}]",
+    [
+      ["section_open", "["],
+      ["glob_literal", "{a\\,b}{[,]c}"],
+      ["section_close", "]"],
+    ],
+  ],
+  [
     "set contents are literal",
     "[[!a-z*{1..2}\\/]]",
     [
@@ -552,6 +589,32 @@ for (const { name, suffix, expected, expectedOwners, tail } of [
       assert.deepEqual(leaves(source, tree).slice(-tail.length), tail);
   });
 }
+
+test("editorconfig: source after a cut numeric range resumes the enclosing alternative", () => {
+  const source = Buffer.concat([
+    Buffer.from("[{x,{1..2"),
+    Buffer.from([255]),
+    Buffer.from(",y}}]"),
+  ]);
+  const tree = parse(source);
+  assert.deepEqual(issues(tree), [
+    ["invalid_syntax", "invalid_encoding", 9, 10],
+    ["invalid_syntax", "missing_brace_close", 10, 10],
+  ]);
+  assert.deepEqual(owners(tree), ["numeric_range", "numeric_range"]);
+  assert.deepEqual(leaves(source, tree).slice(-5), [
+    ["alternative_separator", ","],
+    ["glob_literal", "y"],
+    ["brace_close", "}"],
+    ["glob_literal", "}"],
+    ["section_close", "]"],
+  ]);
+  const closing = tree.find(
+    ({ kind, start }) => kind === "brace_close" && start === 12,
+  );
+  assert.ok(closing);
+  assert.equal(tree[closing.parent].kind, "alternation");
+});
 
 test("editorconfig: section ownership and nested alternatives preserve source order", () => {
   const source = "root=true\n[a]\nx=y\n[{a,{b,c}}]\nz=w\n";
