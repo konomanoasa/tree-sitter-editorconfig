@@ -1,0 +1,129 @@
+==================
+Missing assignment at a line boundary preserves its key
+==================
+key
+
+---
+
+(document
+  (preamble
+    (pair
+      key: (key (key_text))
+      issue: (syntax_issue (invalid_syntax (missing_assignment_operator)))
+      (line_ending))))
+
+==================
+Empty value and empty key
+:cst
+==================
+=
+
+---
+
+0:0 - 1:0   document
+0:0 - 1:0     preamble
+0:0 - 1:0       pair
+0:0 - 0:1         operator: assignment_operator `=`
+0:1 - 1:0         line_ending
+0:1 - 0:2           `\n`
+
+==================
+Key and value trim only their edges
+:cst
+==================
+  a b 	=	 c  d 	
+
+---
+
+0:0  - 1:0    document
+0:0  - 1:0      preamble
+0:0  - 1:0        pair
+0:2  - 0:5          key: key
+0:2  - 0:5            key_text `a b`
+0:7  - 0:8          operator: assignment_operator `=`
+0:10 - 0:14         value: value
+0:10 - 0:14           value_text `c  d`
+0:16 - 1:0          line_ending
+0:16 - 0:18           `\r\n`
+
+==================
+Inline comment markers and equals belong to the value
+:cst
+==================
+a = b=c # ;
+---
+
+0:0  - 0:11   document
+0:0  - 0:11     preamble
+0:0  - 0:11       pair
+0:0  - 0:1          key: key
+0:0  - 0:1            key_text `a`
+0:2  - 0:3          operator: assignment_operator `=`
+0:4  - 0:11         value: value
+0:4  - 0:11           value_text `b=c # ;`
+
+==================
+Quotes and backslashes are literal in pairs
+:cst
+==================
+"key"=\value
+---
+
+0:0  - 0:12   document
+0:0  - 0:12     preamble
+0:0  - 0:12       pair
+0:0  - 0:5          key: key
+0:0  - 0:5            key_text `\"key\"`
+0:5  - 0:6          operator: assignment_operator `=`
+0:6  - 0:12         value: value
+0:6  - 0:12           value_text `\\value`
+
+==================
+Bracket key when no final header bracket exists
+:cst
+==================
+[a=b
+---
+
+0:0 - 0:4   document
+0:0 - 0:4     preamble
+0:0 - 0:4       pair
+0:0 - 0:2         key: key
+0:0 - 0:2           key_text `[a`
+0:2 - 0:3         operator: assignment_operator `=`
+0:3 - 0:4         value: value
+0:3 - 0:4           value_text `b`
+
+==================
+Unknown properties and values stay syntactic key value pairs
+==================
+unknown_key = unknown_value
+[*]
+root=maybe
+indent_size=-1
+
+---
+
+(document
+  (preamble
+    (pair
+      key: (key (key_text))
+      operator: (assignment_operator)
+      value: (value (value_text))
+      (line_ending)))
+  (section
+    header: (section_header
+      opening: (section_open)
+      name: (pattern (wildcard))
+      closing: (section_close)
+      (line_ending))
+    (pair
+      key: (key (key_text))
+      operator: (assignment_operator)
+      value: (value (value_text))
+      (line_ending))
+    (pair
+      key: (key (key_text))
+      operator: (assignment_operator)
+      value: (value (value_text))
+      (line_ending))))

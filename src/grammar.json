@@ -78,30 +78,35 @@
           "name": "line_ending"
         },
         {
-          "type": "FIELD",
-          "name": "issue",
-          "content": {
-            "type": "ALIAS",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_invalid_line_ending_issue"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "issue",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_invalid_line_ending_issue"
+                },
+                "named": true,
+                "value": "syntax_issue"
+              }
             },
-            "named": true,
-            "value": "syntax_issue"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "issue",
-          "content": {
-            "type": "ALIAS",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_incomplete_line_ending_issue"
-            },
-            "named": true,
-            "value": "syntax_issue"
-          }
+            {
+              "type": "FIELD",
+              "name": "issue",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_incomplete_line_ending_issue"
+                },
+                "named": true,
+                "value": "syntax_issue"
+              }
+            }
+          ]
         },
         {
           "type": "SYMBOL",
@@ -419,30 +424,35 @@
             "name": "escape"
           },
           {
-            "type": "FIELD",
-            "name": "issue",
-            "content": {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_invalid_escape_issue"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "issue",
+                "content": {
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_invalid_escape_issue"
+                  },
+                  "named": true,
+                  "value": "syntax_issue"
+                }
               },
-              "named": true,
-              "value": "syntax_issue"
-            }
-          },
-          {
-            "type": "FIELD",
-            "name": "issue",
-            "content": {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_incomplete_escape_issue"
-              },
-              "named": true,
-              "value": "syntax_issue"
-            }
+              {
+                "type": "FIELD",
+                "name": "issue",
+                "content": {
+                  "type": "ALIAS",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "_incomplete_escape_issue"
+                  },
+                  "named": true,
+                  "value": "syntax_issue"
+                }
+              }
+            ]
           },
           {
             "type": "SYMBOL",
@@ -731,20 +741,25 @@
           }
         },
         {
-          "type": "REPEAT",
-          "content": {
-            "type": "FIELD",
-            "name": "issue",
-            "content": {
-              "type": "ALIAS",
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "issue",
               "content": {
-                "type": "SYMBOL",
-                "name": "_invalid_encoding_issue"
-              },
-              "named": true,
-              "value": "syntax_issue"
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_invalid_encoding_issue"
+                },
+                "named": true,
+                "value": "syntax_issue"
+              }
+            },
+            {
+              "type": "BLANK"
             }
-          }
+          ]
         },
         {
           "type": "CHOICE",

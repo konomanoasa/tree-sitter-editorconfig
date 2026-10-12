@@ -28,15 +28,12 @@ function issue($, name) {
   return field("issue", alias($[`_${name}_issue`], $.syntax_issue));
 }
 
-function absent($, name) {
-  return choice(
-    issue($, `invalid_missing_${name}`),
-    issue($, `incomplete_missing_${name}`),
-  );
+function issues($, name) {
+  return choice(issue($, `invalid_${name}`), issue($, `incomplete_${name}`));
 }
 
 function closing($, name) {
-  return choice(field("closing", $[name]), absent($, name));
+  return choice(field("closing", $[name]), issues($, `missing_${name}`));
 }
 
 function pieces($, text) {
@@ -87,13 +84,7 @@ export default grammar({
       seq(field("header", $.section_header), repeat($._body_line)),
     _body_line: ($) => choice($.blank_line, $.comment, $.pair),
 
-    _end: ($) =>
-      choice(
-        $.line_ending,
-        issue($, "invalid_line_ending"),
-        issue($, "incomplete_line_ending"),
-        $._eof,
-      ),
+    _end: ($) => choice($.line_ending, issues($, "line_ending"), $._eof),
     blank_line: ($) => seq($._blank_start, $._end),
     comment: ($) =>
       seq(
@@ -111,7 +102,7 @@ export default grammar({
             field("operator", $.assignment_operator),
             optional(field("value", $.value)),
           ),
-          absent($, "assignment_operator"),
+          issues($, "missing_assignment_operator"),
         ),
         $._end,
       ),
@@ -135,8 +126,7 @@ export default grammar({
           $.single_character,
           $.path_separator,
           $.escape,
-          issue($, "invalid_escape"),
-          issue($, "incomplete_escape"),
+          issues($, "escape"),
           $._undecodable_escape,
           $.character_set,
           $.alternation,
@@ -166,7 +156,7 @@ export default grammar({
         field("lower", $.integer),
         $.range_separator,
         field("upper", $.integer),
-        repeat(issue($, "invalid_encoding")),
+        optional(issue($, "invalid_encoding")),
         closing($, "brace_close"),
       ),
 

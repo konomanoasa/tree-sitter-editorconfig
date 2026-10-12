@@ -108,27 +108,30 @@ static void test_lifecycle_and_serialization_round_trip(void) {
     .kind = HEADER_LINE,
   };
   *scanner = expected;
-  char buffer[TREE_SITTER_SERIALIZATION_BUFFER_SIZE + 2];
-  memset(buffer, 0x5a, sizeof(buffer));
-  const unsigned length =
-    tree_sitter_editorconfig_external_scanner_serialize(scanner, buffer + 1);
+  enum { GUARD_SIZE = 1, GUARD_BYTE = 0x5a };
+  char buffer[TREE_SITTER_SERIALIZATION_BUFFER_SIZE + 2 * GUARD_SIZE];
+  memset(buffer, GUARD_BYTE, sizeof(buffer));
+  const unsigned length = tree_sitter_editorconfig_external_scanner_serialize(
+    scanner,
+    buffer + GUARD_SIZE
+  );
   assert(length == sizeof(Scanner));
   assert(length <= TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
-  assert(buffer[0] == 0x5a);
-  for (size_t index = length + 1; index < sizeof(buffer); index += 1) {
-    assert(buffer[index] == 0x5a);
+  assert(buffer[0] == GUARD_BYTE);
+  for (size_t index = length + GUARD_SIZE; index < sizeof(buffer); index += 1) {
+    assert(buffer[index] == GUARD_BYTE);
   }
   tree_sitter_editorconfig_external_scanner_deserialize(scanner, NULL, 0);
   assert(memcmp(scanner, &initial, sizeof(initial)) == 0);
   tree_sitter_editorconfig_external_scanner_deserialize(
     scanner,
-    buffer + 1,
+    buffer + GUARD_SIZE,
     length
   );
   assert(memcmp(scanner, &expected, sizeof(expected)) == 0);
   tree_sitter_editorconfig_external_scanner_deserialize(
     scanner,
-    buffer + 1,
+    buffer + GUARD_SIZE,
     length - 1
   );
   assert(memcmp(scanner, &initial, sizeof(initial)) == 0);
@@ -145,7 +148,7 @@ static void test_disabled_and_recovery_scans_preserve_state(void) {
     Scanner scanner = {0};
     const Scanner expected = scanner;
     struct MockLexer mock;
-    init_mock_lexer(&mock, input, 3);
+    init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
     assert(!tree_sitter_editorconfig_external_scanner_scan(
       &scanner,
       &mock.lexer,
@@ -156,7 +159,7 @@ static void test_disabled_and_recovery_scans_preserve_state(void) {
   Scanner scanner = {.kind = PAIR_LINE, .content_end = 1, .key_end = 1};
   const Scanner expected = scanner;
   struct MockLexer mock;
-  init_mock_lexer(&mock, input, 3);
+  init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
   const bool valid_symbols[ERROR_SENTINEL + 1] = {[VALUE_TEXT] = true};
   assert(!tree_sitter_editorconfig_external_scanner_scan(
     &scanner,
@@ -184,7 +187,11 @@ static void test_restored_pair_state_preserves_token_ranges(void) {
     bool valid_symbols[ERROR_SENTINEL + 1] = {false};
     valid_symbols[cases[index].token] = true;
     struct MockLexer mock;
-    init_mock_lexer(&mock, input + cases[index].start, 5 - cases[index].start);
+    init_mock_lexer(
+      &mock,
+      input + cases[index].start,
+      sizeof(input) / sizeof(input[0]) - cases[index].start
+    );
     assert(tree_sitter_editorconfig_external_scanner_scan(
       &scanner,
       &mock.lexer,
@@ -248,7 +255,7 @@ static void test_nul_is_value_content_and_not_eof(void) {
     .kind = PAIR_LINE
   };
   struct MockLexer mock;
-  init_mock_lexer(&mock, input, 1);
+  init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
   const bool valid_symbols[ERROR_SENTINEL + 1] = {[VALUE_TEXT] = true};
   assert(!mock_eof(&mock.lexer));
   assert(tree_sitter_editorconfig_external_scanner_scan(
@@ -262,11 +269,33 @@ static void test_nul_is_value_content_and_not_eof(void) {
 }
 
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
-static void test_reuse_allocator_failure_and_cleanup(void) {
+static void test_failed_allocation_leaves_an_inert_scanner(void) {
   assert(reuse_live_allocations == 0);
   reuse_fail_next_calloc = true;
-  assert(tree_sitter_editorconfig_external_scanner_create() == NULL);
+  void *failed = tree_sitter_editorconfig_external_scanner_create();
+  assert(failed == NULL);
   assert(!reuse_fail_next_calloc);
+  char buffer[TREE_SITTER_SERIALIZATION_BUFFER_SIZE] = {0};
+  assert(
+    tree_sitter_editorconfig_external_scanner_serialize(failed, buffer) == 0
+  );
+  tree_sitter_editorconfig_external_scanner_deserialize(
+    failed,
+    buffer,
+    sizeof(Scanner)
+  );
+  const int32_t input[] = {'a', '=', 'b'};
+  struct MockLexer mock;
+  init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
+  const bool valid_symbols[ERROR_SENTINEL + 1] = {[PAIR_START] = true};
+  assert(!tree_sitter_editorconfig_external_scanner_scan(
+    failed,
+    &mock.lexer,
+    valid_symbols
+  ));
+  assert(mock.offset == 0);
+  tree_sitter_editorconfig_external_scanner_destroy(failed);
+  assert(reuse_live_allocations == 0);
   void *scanner = tree_sitter_editorconfig_external_scanner_create();
   assert(scanner != NULL);
   assert(reuse_live_allocations == 1);
@@ -283,7 +312,7 @@ int main(void) {
   test_escape_issues_distinguish_closed_boundaries_from_eof();
   test_nul_is_value_content_and_not_eof();
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
-  test_reuse_allocator_failure_and_cleanup();
+  test_failed_allocation_leaves_an_inert_scanner();
 #endif
   return 0;
 }
