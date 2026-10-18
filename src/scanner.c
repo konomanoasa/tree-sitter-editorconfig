@@ -423,7 +423,6 @@ unsigned tree_sitter_editorconfig_external_scanner_serialize(
   void *payload,
   char *buffer
 ) {
-  /* Tree-sitter passes NULL after allocation failure. */
   if (payload == NULL) return 0;
   memcpy(buffer, payload, sizeof(Scanner));
   return sizeof(Scanner);
