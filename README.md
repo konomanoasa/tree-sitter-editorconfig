@@ -15,8 +15,6 @@ npm install @konomanoasa/tree-sitter-editorconfig
 
 ## Development
 
-Development uses Node.js 24.21.0 or later.
-
 ```sh
 npm install
 npm run build
@@ -29,7 +27,7 @@ npm test
 
 ## Used By
 
-[editorconfig-ts-mode](https://github.com/konomanoasa/editorconfig-ts-mode): Emacs major mode.
+[editorconfig-ts-mode](https://github.com/konomanoasa/editorconfig-ts-mode)
 
 ## License
 

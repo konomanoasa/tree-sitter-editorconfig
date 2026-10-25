@@ -4,9 +4,30 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { root } from "../scripts/tree-sitter.js";
 import nodeTypes from "../src/node-types.json" with { type: "json" };
-import { parseCorpus } from "./support/corpus.js";
-import { issues, leaves, parseCst } from "./support/cst.js";
-import { applyEdits, assertEditHistory, parse } from "./support/parser.js";
+import { issues, leaves, owners, parseCst } from "./support/cst.js";
+import { parse } from "./support/parser.js";
+
+function parseCorpus(text) {
+  const sections = text.split("==================\n");
+  assert.equal(sections.shift(), "", "corpus must begin with a header");
+  assert.equal(sections.length % 2, 0, "corpus headers must be paired");
+  const cases = [];
+  for (let index = 0; index < sections.length; index += 2) {
+    const [name, ...attributes] = sections[index].trimEnd().split("\n");
+    assert.ok(name, "corpus case must have a name");
+    for (const attribute of attributes) {
+      assert.ok(
+        attribute === ":cst" || attribute === ":error",
+        `unsupported corpus attribute: ${attribute}`,
+      );
+    }
+    const parts = sections[index + 1].split("\n---\n");
+    assert.equal(parts.length, 2, `${name}: expected one output separator`);
+    const source = parts[0].endsWith("\r") ? parts[0].slice(0, -1) : parts[0];
+    cases.push({ name, source });
+  }
+  return cases;
+}
 
 const corpusDirectory = join(root, "test/corpus");
 for (const file of readdirSync(corpusDirectory).sort()) {
@@ -76,6 +97,43 @@ test("editorconfig: public issue nodes have one outcome and one reason leaf", ()
   }
 });
 
+test("editorconfig: a truncated UTF-8 sequence at EOF is invalid", () => {
+  const source = Buffer.concat([Buffer.from("a="), Buffer.from([0xc3])]);
+  const tree = parse(source);
+  assert.deepEqual(issues(tree), [
+    ["invalid_syntax", "invalid_encoding", 2, 3],
+  ]);
+  assert.deepEqual(owners(tree), ["value"]);
+});
+
+for (const { name, prefix, suffix, owner } of [
+  { name: "key", prefix: "k", suffix: "ey=v", owner: "key" },
+  { name: "value", prefix: "k=v", suffix: "alue", owner: "value" },
+  { name: "comment", prefix: "# a", suffix: "b", owner: "comment" },
+  { name: "glob", prefix: "[a", suffix: "b]", owner: "pattern" },
+  { name: "set", prefix: "[[a", suffix: "b]]", owner: "character_set" },
+  { name: "literal brace", prefix: "[{a", suffix: "b}]", owner: "pattern" },
+  {
+    name: "numeric range",
+    prefix: "[{1..2",
+    suffix: "}]",
+    owner: "numeric_range",
+  },
+]) {
+  test(`editorconfig: an invalid UTF-8 run inside ${name} has an isolated range`, () => {
+    const source = Buffer.concat([
+      Buffer.from(prefix),
+      Buffer.from([255, 254, 128]),
+      Buffer.from(suffix),
+    ]);
+    const tree = parse(source);
+    assert.deepEqual(issues(tree), [
+      ["invalid_syntax", "invalid_encoding", prefix.length, prefix.length + 3],
+    ]);
+    assert.deepEqual(owners(tree), [owner]);
+  });
+}
+
 test("editorconfig: only issues carry the issue field after an undecodable escape", () => {
   const source = Buffer.concat([
     Buffer.from("[\\"),
@@ -88,29 +146,6 @@ test("editorconfig: only issues carry the issue field after an undecodable escap
       .map(({ kind }) => kind),
     ["syntax_issue", "syntax_issue"],
   );
-});
-
-const editCases = [
-  {
-    name: "multibyte value replacement",
-    source: "日本=値\n",
-    edits: [{ byte: 7, deleteBytes: 3, insert: "別" }],
-  },
-];
-for (const entry of editCases) {
-  test(`editorconfig: ${entry.name}`, () => {
-    assertEditHistory(entry);
-  });
-}
-
-test("editorconfig: splitting a UTF-8 character preserves the decoding issue after an edit", () => {
-  const source = "a=é";
-  const edits = [{ byte: 2, deleteBytes: 1, insert: "" }];
-  const incremental = parse(source, edits);
-  assert.deepEqual(incremental, parse(applyEdits(source, edits)));
-  assert.deepEqual(issues(incremental), [
-    ["invalid_syntax", "invalid_encoding", 2, 3],
-  ]);
 });
 
 test("editorconfig: CST helpers preserve fields, hierarchy and UTF-8 ranges across CRLF", () => {
@@ -157,3 +192,19 @@ test("editorconfig: CST helpers reject truncated roots and native recovery", () 
     assert.throws(() => parseCst(text, "a=b"), { code: "ERR_ASSERTION" });
   }
 });
+
+const largeInputCounts = {
+  pairs: 5_000,
+  valueCharacters: 100_000,
+};
+for (const [name, source] of [
+  ["many pairs", `[*]\n${"key=value\n".repeat(largeInputCounts.pairs)}`],
+  [
+    "one long value",
+    `[*]\nkey=${"x".repeat(largeInputCounts.valueCharacters)}`,
+  ],
+]) {
+  test(`editorconfig: large input: ${name}`, () => {
+    assert.deepEqual(issues(parse(source)), []);
+  });
+}

@@ -1,18 +1,4 @@
 ==================
-Missing assignment at a line boundary preserves its key
-==================
-key
-
----
-
-(document
-  (preamble
-    (pair
-      key: (key (key_text))
-      issue: (syntax_issue (invalid_syntax (missing_assignment_operator)))
-      (line_ending))))
-
-==================
 Empty value and empty key
 :cst
 ==================
@@ -126,4 +112,18 @@ indent_size=-1
       key: (key (key_text))
       operator: (assignment_operator)
       value: (value (value_text))
+      (line_ending))))
+
+==================
+Missing assignment at a line boundary preserves its key
+==================
+key
+
+---
+
+(document
+  (preamble
+    (pair
+      key: (key (key_text))
+      issue: (syntax_issue (invalid_syntax (missing_assignment_operator)))
       (line_ending))))
