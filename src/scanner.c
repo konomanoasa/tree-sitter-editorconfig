@@ -22,7 +22,6 @@ enum Token {
   SINGLE_CHARACTER,
   PATH_SEPARATOR,
   ESCAPE,
-  ESCAPE_PREFIX,
   SET_OPEN,
   SET_NEGATION,
   SET_TEXT,
@@ -33,20 +32,6 @@ enum Token {
   ALTERNATIVE_SEPARATOR,
   INTEGER,
   RANGE_SEPARATOR,
-  INVALID_ENCODING,
-  INVALID_LINE_ENDING,
-  INCOMPLETE_LINE_ENDING,
-  /* boundary_issue requires adjacent invalid/incomplete token pairs. */
-  INVALID_ESCAPE,
-  INCOMPLETE_ESCAPE,
-  INVALID_MISSING_ASSIGNMENT_OPERATOR,
-  INCOMPLETE_MISSING_ASSIGNMENT_OPERATOR,
-  INVALID_MISSING_SECTION_CLOSE,
-  INCOMPLETE_MISSING_SECTION_CLOSE,
-  INVALID_MISSING_SET_CLOSE,
-  INCOMPLETE_MISSING_SET_CLOSE,
-  INVALID_MISSING_BRACE_CLOSE,
-  INCOMPLETE_MISSING_BRACE_CLOSE,
   ERROR_SENTINEL
 };
 
@@ -102,17 +87,11 @@ take(Scanner *s, TSLexer *lexer, const bool *valid, enum Token token) {
   return emit(lexer, valid, token);
 }
 
-/* Include the next character in edit invalidation. */
-static void read_next(TSLexer *lexer) {
-  lexer->advance(lexer, false);
-}
-
-static bool undecodable(Scanner *s, TSLexer *lexer, const bool *valid) {
-  do {
-    advance(s, lexer);
-  } while (lexer->lookahead == -1);
-  if (!lexer->eof(lexer)) read_next(lexer);
-  return emit(lexer, valid, INVALID_ENCODING);
+static bool content(TSLexer *lexer) {
+  return !lexer->eof(lexer) &&
+    lexer->lookahead != -1 &&
+    lexer->lookahead != '\n' &&
+    lexer->lookahead != '\r';
 }
 
 static bool text(
@@ -122,21 +101,9 @@ static bool text(
   enum Token token,
   uint32_t end
 ) {
-  if (lexer->lookahead == -1) return undecodable(s, lexer, valid);
-  while (s->position < end && lexer->lookahead != -1) advance(s, lexer);
-  return emit(lexer, valid, token);
-}
-
-static bool
-boundary_issue(TSLexer *lexer, const bool *valid, enum Token invalid_token) {
-  if (!valid[invalid_token] && !valid[invalid_token + 1]) return false;
-  lexer->mark_end(lexer);
-  while (whitespace(lexer->lookahead)) lexer->advance(lexer, false);
-  return emit(
-    lexer,
-    valid,
-    (enum Token)(invalid_token + (lexer->eof(lexer) ? 1 : 0))
-  );
+  uint32_t start = s->position;
+  while (s->position < end && content(lexer)) advance(s, lexer);
+  return s->position > start && emit(lexer, valid, token);
 }
 
 static bool start_line(Scanner *s, TSLexer *lexer, const bool *valid) {
@@ -188,8 +155,7 @@ static bool end_line(Scanner *s, TSLexer *lexer, const bool *valid) {
   else if (lexer->lookahead == '\r') {
     lexer->advance(lexer, false);
     if (lexer->lookahead == '\n') lexer->advance(lexer, false);
-    else
-      token = lexer->eof(lexer) ? INCOMPLETE_LINE_ENDING : INVALID_LINE_ENDING;
+    else return false;
   } else return false;
   lexer->mark_end(lexer);
   memset(s, 0, sizeof(Scanner));
@@ -198,19 +164,21 @@ static bool end_line(Scanner *s, TSLexer *lexer, const bool *valid) {
 
 static bool comment(Scanner *s, TSLexer *lexer, const bool *valid) {
   if (s->position >= s->content_end) return end_line(s, lexer, valid);
-  if (valid[COMMENT_MARKER]) return take(s, lexer, valid, COMMENT_MARKER);
+  if (valid[COMMENT_MARKER])
+    return (lexer->lookahead == '#' || lexer->lookahead == ';') &&
+      take(s, lexer, valid, COMMENT_MARKER);
   return text(s, lexer, valid, COMMENT_TEXT, s->content_end);
 }
 
 static bool pair(Scanner *s, TSLexer *lexer, const bool *valid) {
   if (s->position < s->key_end)
     return text(s, lexer, valid, KEY_TEXT, s->key_end);
-  if (s->equals == NO_EQUALS)
-    return boundary_issue(lexer, valid, INVALID_MISSING_ASSIGNMENT_OPERATOR) ||
-      end_line(s, lexer, valid);
+  if (s->equals == NO_EQUALS) return false;
   if (s->position <= s->equals) {
-    while (s->position < s->equals) skip(s, lexer);
-    return take(s, lexer, valid, ASSIGNMENT_OPERATOR);
+    while (s->position < s->equals && whitespace(lexer->lookahead))
+      skip(s, lexer);
+    return lexer->lookahead == '=' &&
+      take(s, lexer, valid, ASSIGNMENT_OPERATOR);
   }
   if (s->position == s->equals + 1)
     while (whitespace(lexer->lookahead)) skip(s, lexer);
@@ -246,7 +214,7 @@ static enum Token brace(Scanner *s, TSLexer *lexer, bool leading) {
   bool in_set = false, escaped = false, closed = false;
   lexer->advance(lexer, false);
   if (leading) lexer->mark_end(lexer);
-  while (position < s->glob_end && lexer->lookahead != -1) {
+  while (position < s->glob_end && content(lexer)) {
     int32_t c = lexer->lookahead;
     bool delimiter = !in_set && !escaped && depth == 1;
     if (delimiter && c == '}') {
@@ -301,7 +269,7 @@ static bool literal_character(int32_t c, const bool *valid) {
 
 static bool literal(Scanner *s, TSLexer *lexer, const bool *valid) {
   uint32_t start = s->position;
-  while (s->position < s->glob_end) {
+  while (s->position < s->glob_end && content(lexer)) {
     int32_t c = lexer->lookahead;
     if (c == '{') {
       bool leading = s->position == start;
@@ -311,7 +279,7 @@ static bool literal(Scanner *s, TSLexer *lexer, const bool *valid) {
     } else if (literal_character(c, valid)) advance(s, lexer);
     else break;
   }
-  return emit(lexer, valid, GLOB_LITERAL);
+  return s->position > start && emit(lexer, valid, GLOB_LITERAL);
 }
 
 static bool atom(Scanner *s, TSLexer *lexer, const bool *valid) {
@@ -329,10 +297,9 @@ static bool atom(Scanner *s, TSLexer *lexer, const bool *valid) {
       return take(s, lexer, valid, SET_OPEN);
     case '\\':
       advance(s, lexer);
-      if (s->position == s->glob_end)
-        return boundary_issue(lexer, valid, INVALID_ESCAPE);
-      if (lexer->lookahead == -1) return emit(lexer, valid, ESCAPE_PREFIX);
-      return take(s, lexer, valid, ESCAPE);
+      return s->position < s->glob_end &&
+        content(lexer) &&
+        take(s, lexer, valid, ESCAPE);
     default:
       return literal(s, lexer, valid);
   }
@@ -343,17 +310,15 @@ static bool set(Scanner *s, TSLexer *lexer, const bool *valid) {
   if (c == ']') return take(s, lexer, valid, SET_CLOSE);
   if (c == '!' && valid[SET_NEGATION])
     return take(s, lexer, valid, SET_NEGATION);
-  while (
-    s->position < s->glob_end &&
-    lexer->lookahead != ']' &&
-    lexer->lookahead != -1
-  )
+  uint32_t start = s->position;
+  while (s->position < s->glob_end && lexer->lookahead != ']' && content(lexer))
     advance(s, lexer);
-  return emit(lexer, valid, SET_TEXT);
+  return s->position > start && emit(lexer, valid, SET_TEXT);
 }
 
 static bool integer(Scanner *s, TSLexer *lexer, const bool *valid) {
   if (lexer->lookahead == '-') advance(s, lexer);
+  if (s->position >= s->glob_end || !digit(lexer->lookahead)) return false;
   while (s->position < s->glob_end && digit(lexer->lookahead))
     advance(s, lexer);
   return emit(lexer, valid, INTEGER);
@@ -361,37 +326,29 @@ static bool integer(Scanner *s, TSLexer *lexer, const bool *valid) {
 
 static bool glob(Scanner *s, TSLexer *lexer, const bool *valid) {
   int32_t c = lexer->lookahead;
-  if (c == -1) return undecodable(s, lexer, valid);
-  if (valid[SET_TEXT]) return set(s, lexer, valid);
+  if (!content(lexer)) return false;
+  if (valid[SET_TEXT] || valid[SET_CLOSE]) return set(s, lexer, valid);
   if (valid[INTEGER]) return integer(s, lexer, valid);
   if (valid[RANGE_SEPARATOR]) {
+    if (c != '.') return false;
     advance(s, lexer);
-    return take(s, lexer, valid, RANGE_SEPARATOR);
+    return s->position < s->glob_end &&
+      lexer->lookahead == '.' &&
+      take(s, lexer, valid, RANGE_SEPARATOR);
   }
   if (c == '}' && valid[BRACE_CLOSE]) return take(s, lexer, valid, BRACE_CLOSE);
   if (c == ',' && valid[ALTERNATIVE_SEPARATOR])
     return take(s, lexer, valid, ALTERNATIVE_SEPARATOR);
   if (valid[GLOB_LITERAL]) return atom(s, lexer, valid);
-  lexer->mark_end(lexer);
-  read_next(lexer);
-  return emit(lexer, valid, INVALID_MISSING_BRACE_CLOSE);
+  return false;
 }
 
 static bool header(Scanner *s, TSLexer *lexer, const bool *valid) {
-  if (valid[SECTION_OPEN]) return take(s, lexer, valid, SECTION_OPEN);
+  if (valid[SECTION_OPEN])
+    return lexer->lookahead == '[' && take(s, lexer, valid, SECTION_OPEN);
   if (s->position < s->glob_end) return glob(s, lexer, valid);
-  if (s->position == s->glob_end) {
-    if (
-      boundary_issue(lexer, valid, INVALID_MISSING_SET_CLOSE) ||
-      boundary_issue(lexer, valid, INVALID_MISSING_BRACE_CLOSE)
-    )
-      return true;
-    if (s->glob_end == s->content_end) {
-      if (boundary_issue(lexer, valid, INVALID_MISSING_SECTION_CLOSE))
-        return true;
-    } else if (valid[SECTION_CLOSE])
-      return take(s, lexer, valid, SECTION_CLOSE);
-  }
+  if (s->position == s->glob_end && s->glob_end < s->content_end)
+    return lexer->lookahead == ']' && take(s, lexer, valid, SECTION_CLOSE);
   return end_line(s, lexer, valid);
 }
 

@@ -42,18 +42,8 @@ Section name whitespace is significant
 0:4 - 0:5         closing: section_close `]`
 
 ==================
-A missing section close at EOF is incomplete
-:cst
+A missing section close at EOF requires standard recovery
+:error
 ==================
 [a
 ---
-
-0:0 - 0:2   document
-0:0 - 0:2     section
-0:0 - 0:2       header: section_header
-0:0 - 0:1         opening: section_open `[`
-0:1 - 0:2         name: pattern
-0:1 - 0:2           glob_literal `a`
-0:2 - 0:2         issue: syntax_issue
-0:2 - 0:2           incomplete_syntax
-0:2 - 0:2             missing_section_close

@@ -9,15 +9,8 @@ CompileFlags:
 
 ---
 If:
-  PathMatch: .*\.h
+  PathMatch: bindings/python/.*\.c
 CompileFlags:
+  CompilationDatabase: None
   Add:
-    - -xc-header
-    - -Wno-unused-function
-
----
-If:
-  PathMatch: test/[^/]*\.c
-CompileFlags:
-  Add:
-    - -Wno-unused-function
+    - -I../../src

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { issues } from "./support/cst.js";
+import { hasError } from "./support/cst.js";
 import {
   applyEdits,
   assertEditHistory,
@@ -9,6 +9,27 @@ import {
 } from "./support/parser.js";
 
 const editCases = [
+  {
+    name: "delete a prefix to move a BOM to byte zero",
+    source: " \uFEFFkey=value",
+    edits: [{ byte: 0, deleteBytes: 1, insert: "" }],
+  },
+  {
+    name: "insert before a leading BOM in an incomplete source and repair it",
+    source: "\uFEFFkey",
+    edits: [
+      { byte: 0, deleteBytes: 0, insert: "x" },
+      { byte: 7, deleteBytes: 0, insert: "=value" },
+    ],
+  },
+  {
+    name: "repair an invalid first line then edit a normal later section",
+    source: "bad\n[a]\nk=v\n[b]\nx=y",
+    edits: [
+      { byte: 3, deleteBytes: 0, insert: "=ok" },
+      { byte: 22, deleteBytes: 0, insert: "z" },
+    ],
+  },
   {
     name: "multibyte value replacement",
     source: "日本=値\n",
@@ -205,17 +226,17 @@ for (const entry of editCases) {
   });
 }
 
-test("editorconfig: splitting a UTF-8 character preserves the decoding issue after an edit", () => {
+test("editorconfig: a split UTF-8 character is rejected and its repair matches fresh parsing", () => {
   const source = "a=é";
-  const edits = [{ byte: 2, deleteBytes: 1, insert: "" }];
-  const incremental = parse(source, edits);
-  assert.deepEqual(incremental, parse(applyEdits(source, edits)));
-  assert.deepEqual(issues(incremental), [
-    ["invalid_syntax", "invalid_encoding", 2, 3],
-  ]);
+  const split = { byte: 2, deleteBytes: 1, insert: "" };
+  assert.equal(hasError(parse(source, [split])), true);
+  assertEditHistory({
+    source,
+    edits: [split, { byte: 2, deleteBytes: 1, insert: "é" }],
+  });
 });
 
-test("editorconfig: fixed-seed generated histories preserve fresh parse structure and issue ranges", () => {
+test("editorconfig: fixed-seed generated histories preserve normal source structure", () => {
   const seed = 0x6e34ab19;
   const historyCount = 120;
   const editsPerHistory = 5;

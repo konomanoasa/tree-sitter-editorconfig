@@ -1,5 +1,5 @@
 use konomanoasa_tree_sitter_editorconfig as grammar;
-use tree_sitter::{Parser, Query};
+use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
 #[test]
 fn parses_valid_source() {
@@ -13,5 +13,16 @@ fn parses_valid_source() {
   assert_eq!(root.byte_range(), 0..source.len());
   assert!(!root.has_error());
   assert!(grammar::NODE_TYPES.contains("\"document\""));
-  Query::new(&language, grammar::HIGHLIGHTS_QUERY).unwrap();
+  let query = Query::new(&language, grammar::HIGHLIGHTS_QUERY).unwrap();
+  let mut cursor = QueryCursor::new();
+  let mut matches = cursor.matches(&query, root, source.as_bytes());
+  let mut properties = Vec::new();
+  while let Some(found) = matches.next() {
+    for capture in found.captures() {
+      if query.capture_names()[capture.index as usize] == "property" {
+        properties.push(capture.node.utf8_text(source.as_bytes()).unwrap());
+      }
+    }
+  }
+  assert_eq!(properties, ["indent_style"]);
 }

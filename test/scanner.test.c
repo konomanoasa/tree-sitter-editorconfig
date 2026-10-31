@@ -5,8 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../src/parser.c"
-#include "../src/scanner.c"
+#include "../src/tree_sitter/parser.h"
 
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
 static size_t reuse_live_allocations;
@@ -80,6 +79,9 @@ init_mock_lexer(struct MockLexer *mock, const int32_t *input, size_t length) {
     .mark = SIZE_MAX,
   };
 }
+
+#include "../src/parser.c"
+#include "../src/scanner.c"
 
 static void test_builtin_lexer_accepts_only_physical_eof(void) {
   const int32_t input[] = {'x', 0, '\n', -1, 0x1f600};
@@ -214,34 +216,95 @@ static void test_restored_pair_state_preserves_token_ranges(void) {
   assert(memcmp(&scanner, &initial, sizeof(initial)) == 0);
 }
 
-static void test_escape_issues_distinguish_closed_boundaries_from_eof(void) {
+static void test_incomplete_escape_rejects_without_changing_state(void) {
   const struct {
     int32_t input[2];
     size_t length;
-    enum Token expected;
+    uint32_t glob_end;
   } cases[] = {
-    {{'\\', ']'}, 2, INVALID_ESCAPE},
-    {{'\\', '\n'}, 2, INVALID_ESCAPE},
-    {{'\\', 0}, 1, INCOMPLETE_ESCAPE},
+    {{'\\', ']'}, 2, 3},
+    {{'\\', '\n'}, 2, 3},
+    {{'\\', 0}, 1, 3},
+    {{'\\', -1}, 2, 4},
   };
   for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index += 1) {
-    Scanner scanner =
-      {.position = 2, .content_end = 3, .glob_end = 3, .kind = HEADER_LINE};
+    Scanner scanner = {
+      .position = 2,
+      .content_end = 5,
+      .glob_end = cases[index].glob_end,
+      .kind = HEADER_LINE
+    };
+    const Scanner expected = scanner;
     struct MockLexer mock;
     init_mock_lexer(&mock, cases[index].input, cases[index].length);
     const bool valid_symbols[ERROR_SENTINEL + 1] = {
       [GLOB_LITERAL] = true,
-      [INVALID_ESCAPE] = true,
-      [INCOMPLETE_ESCAPE] = true,
+      [ESCAPE] = true,
     };
-    assert(tree_sitter_editorconfig_external_scanner_scan(
+    assert(!tree_sitter_editorconfig_external_scanner_scan(
       &scanner,
       &mock.lexer,
       valid_symbols
     ));
-    assert(mock.lexer.result_symbol == cases[index].expected);
-    assert(mock.mark == 1);
-    assert(scanner.position == 3);
+    assert(memcmp(&scanner, &expected, sizeof(expected)) == 0);
+  }
+}
+
+static void test_required_tokens_reject_other_source(void) {
+  const struct {
+    enum Token token;
+    int32_t input[2];
+    size_t length;
+  } cases[] = {
+    {SECTION_OPEN, {'x'}, 1},
+    {INTEGER, {'-'}, 1},
+    {INTEGER, {'x'}, 1},
+    {RANGE_SEPARATOR, {'.'}, 1},
+    {RANGE_SEPARATOR, {'.', 'x'}, 2},
+    {SET_TEXT, {-1}, 1},
+    {GLOB_LITERAL, {0}, 0},
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+    Scanner scanner =
+      {.position = 1, .glob_end = 10, .content_end = 11, .kind = HEADER_LINE};
+    const Scanner expected = scanner;
+    bool valid_symbols[ERROR_SENTINEL + 1] = {false};
+    valid_symbols[cases[index].token] = true;
+    struct MockLexer mock;
+    init_mock_lexer(&mock, cases[index].input, cases[index].length);
+    assert(!tree_sitter_editorconfig_external_scanner_scan(
+      &scanner,
+      &mock.lexer,
+      valid_symbols
+    ));
+    assert(memcmp(&scanner, &expected, sizeof(expected)) == 0);
+  }
+}
+
+static void test_line_tokens_reject_cr_and_decoding_failure(void) {
+  const int32_t inputs[] = {'\r', -1};
+  for (size_t index = 0; index < sizeof(inputs) / sizeof(inputs[0]); index++) {
+    Scanner scanner = {
+      .position = 2,
+      .content_end = 3,
+      .equals = 1,
+      .key_end = 1,
+      .kind = PAIR_LINE
+    };
+    const Scanner expected = scanner;
+    struct MockLexer mock;
+    init_mock_lexer(&mock, inputs + index, 1);
+    const bool valid_symbols[ERROR_SENTINEL + 1] = {
+      [VALUE_TEXT] = true,
+      [LINE_ENDING] = true,
+      [END_OF_FILE] = true,
+    };
+    assert(!tree_sitter_editorconfig_external_scanner_scan(
+      &scanner,
+      &mock.lexer,
+      valid_symbols
+    ));
+    assert(memcmp(&scanner, &expected, sizeof(expected)) == 0);
   }
 }
 
@@ -309,7 +372,9 @@ int main(void) {
   test_lifecycle_and_serialization_round_trip();
   test_disabled_and_recovery_scans_preserve_state();
   test_restored_pair_state_preserves_token_ranges();
-  test_escape_issues_distinguish_closed_boundaries_from_eof();
+  test_incomplete_escape_rejects_without_changing_state();
+  test_required_tokens_reject_other_source();
+  test_line_tokens_reject_cr_and_decoding_failure();
   test_nul_is_value_content_and_not_eof();
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
   test_failed_allocation_leaves_an_inert_scanner();

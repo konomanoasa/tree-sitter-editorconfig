@@ -115,15 +115,9 @@ indent_size=-1
       (line_ending))))
 
 ==================
-Missing assignment at a line boundary preserves its key
+A missing assignment at a line boundary requires standard recovery
+:error
 ==================
 key
 
 ---
-
-(document
-  (preamble
-    (pair
-      key: (key (key_text))
-      issue: (syntax_issue (invalid_syntax (missing_assignment_operator)))
-      (line_ending))))

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { after, before } from "node:test";
 import { createTreeSitter, root } from "../../scripts/tree-sitter.js";
 
-import { parseCst } from "./cst.js";
+import { hasError, parseCst } from "./cst.js";
 
 const commandTimeoutMs = 30_000;
 const commandMaxBufferBytes = 32 * 1024 * 1024;
@@ -63,37 +63,50 @@ function applyEdits(source, edits) {
 function parse(source, edits = []) {
   const path = join(directory, "input.editorconfig");
   writeFileSync(path, source);
-  const text = run([
-    "parse",
-    "--encoding",
-    "utf8",
-    "--config-path",
-    configuration,
-    "--lib-path",
-    join(directory, library),
-    "--lang-name",
-    "editorconfig",
-    "--cst",
-    path,
-    ...(edits.length
-      ? [
-          "--edits",
-          ...edits.map(
-            ({ byte, deleteBytes, insert }) =>
-              `${byte} ${deleteBytes} ${insert}`,
-          ),
-        ]
-      : []),
-  ]);
-  return parseCst(text, applyEdits(source, edits));
+  const result = runner.run(
+    [
+      "parse",
+      "--encoding",
+      "utf8",
+      "--config-path",
+      configuration,
+      "--lib-path",
+      join(directory, library),
+      "--lang-name",
+      "editorconfig",
+      "--cst",
+      path,
+      ...(edits.length
+        ? [
+            "--edits",
+            ...edits.map(
+              ({ byte, deleteBytes, insert }) =>
+                `${byte} ${deleteBytes} ${insert}`,
+            ),
+          ]
+        : []),
+    ],
+    { timeout: commandTimeoutMs, maxBuffer: commandMaxBufferBytes },
+  );
+  assert.ifError(result.error);
+  const nodes = parseCst(result.stdout, applyEdits(source, edits));
+  assert.equal(
+    result.status,
+    hasError(nodes) ? 1 : 0,
+    result.stdout + result.stderr,
+  );
+  return nodes;
 }
 
 function assertIncrementalEqualsFresh(initial, edits, source) {
-  assert.deepEqual(
-    parse(initial, edits),
-    parse(source),
-    JSON.stringify({ initial, edits, source }),
-  );
+  const actual = parse(initial, edits);
+  const expected = parse(source);
+  if (!hasError(expected))
+    assert.deepEqual(
+      actual,
+      expected,
+      JSON.stringify({ initial, edits, source }),
+    );
 }
 
 function assertEditHistory({ source, edits }) {

@@ -25,10 +25,6 @@ npm test
 
 [EditorConfig Specification 0.17.2](https://spec.editorconfig.org/)
 
-## Used By
-
-[editorconfig-ts-mode](https://github.com/konomanoasa/editorconfig-ts-mode)
-
 ## License
 
 [MIT](LICENSE)
