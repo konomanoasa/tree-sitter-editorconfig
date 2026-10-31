@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { root } from "../scripts/tree-sitter.js";
 import nodeTypes from "../src/node-types.json" with { type: "json" };
-import { hasError, leaves, parseCst } from "./support/cst.js";
+import { issues, leaves, owners, parseCst } from "./support/cst.js";
 import { parse } from "./support/parser.js";
 
 function parseCorpus(text) {
@@ -24,7 +24,7 @@ function parseCorpus(text) {
     const parts = sections[index + 1].split("\n---\n");
     assert.equal(parts.length, 2, `${name}: expected one output separator`);
     const source = parts[0].endsWith("\r") ? parts[0].slice(0, -1) : parts[0];
-    cases.push({ name, source, error: attributes.includes(":error") });
+    cases.push({ name, source });
   }
   return cases;
 }
@@ -35,10 +35,10 @@ for (const file of readdirSync(corpusDirectory).sort()) {
   const entries = parseCorpus(
     readFileSync(join(corpusDirectory, file), "utf8"),
   );
-  for (const { name, source, error } of entries) {
-    test(`editorconfig: corpus acceptance and fresh determinism: ${file}: ${name}`, () => {
+  for (const { name, source } of entries) {
+    test(`editorconfig: corpus source coverage issue structure and fresh determinism: ${file}: ${name}`, () => {
       const tree = parse(source);
-      assert.equal(hasError(tree), error);
+      issues(tree);
       assert.deepEqual(parse(source), tree);
     });
   }
@@ -55,10 +55,10 @@ test("editorconfig: corpus inputs retain BOM NUL whitespace and line endings", (
     "a=b\r\r\n---\nignored output\n",
   ].join("");
   assert.deepEqual(parseCorpus(text), [
-    { name: "Empty", source: "", error: false },
-    { name: "Layout", source: "\uFEFF \t\v\f\r\na=b\n\n", error: false },
-    { name: "NUL", source: "\0=\0", error: false },
-    { name: "Final CR", source: "a=b\r", error: false },
+    { name: "Empty", source: "" },
+    { name: "Layout", source: "\uFEFF \t\v\f\r\na=b\n\n" },
+    { name: "NUL", source: "\0=\0" },
+    { name: "Final CR", source: "a=b\r" },
   ]);
 });
 
@@ -73,57 +73,79 @@ test("editorconfig: corpus input reader rejects unsupported conditions and frami
   }
 });
 
-test("editorconfig: public metadata has required delimiters and no diagnostic nodes", () => {
-  for (const node of nodeTypes) {
-    assert.doesNotMatch(node.type, /issue|invalid_|incomplete_|missing_/);
-    assert.equal(Object.hasOwn(node.fields ?? {}, "issue"), false);
-  }
-  for (const [kind, field] of [
-    ["pair", "operator"],
-    ["section_header", "opening"],
-    ["section_header", "closing"],
-    ["character_set", "closing"],
-    ["alternation", "closing"],
-    ["numeric_range", "closing"],
-  ]) {
-    const node = nodeTypes.find(({ type }) => type === kind);
-    assert.equal(node?.fields?.[field]?.required, true, `${kind}.${field}`);
+test("editorconfig: public issue nodes have one outcome and one reason leaf", () => {
+  const issue = nodeTypes.find(({ type }) => type === "syntax_issue");
+  assert.ok(issue);
+  assert.ok(issue.children);
+  assert.equal(issue.children.required, true);
+  assert.equal(issue.children.multiple, false);
+  assert.deepEqual(
+    issue.children.types.map(({ type }) => type),
+    ["incomplete_syntax", "invalid_syntax"],
+  );
+  for (const { type } of issue.children.types) {
+    const outcome = nodeTypes.find((node) => node.type === type);
+    assert.ok(outcome, type);
+    assert.ok(outcome.children, type);
+    assert.equal(outcome.children.required, true);
+    assert.equal(outcome.children.multiple, false);
+    for (const child of outcome.children.types) {
+      const reason = nodeTypes.find((node) => node.type === child.type);
+      assert.ok(reason, child.type);
+      assert.equal(reason.children, undefined);
+    }
   }
 });
 
-for (const [name, prefix, suffix] of [
-  ["key", "k", "ey=v"],
-  ["value", "k=v", "alue"],
-  ["comment", "# a", "b"],
-  ["glob", "[a", "b]"],
-  ["set", "[[a", "b]]"],
-  ["literal brace", "[{a", "b}]"],
-  ["escape", "[\\", "*]"],
-  ["numeric range", "[{1..2", "}]"],
+test("editorconfig: a truncated UTF-8 sequence at EOF is invalid", () => {
+  const source = Buffer.concat([Buffer.from("a="), Buffer.from([0xc3])]);
+  const tree = parse(source);
+  assert.deepEqual(issues(tree), [
+    ["invalid_syntax", "invalid_encoding", 2, 3],
+  ]);
+  assert.deepEqual(owners(tree), ["value"]);
+});
+
+for (const { name, prefix, suffix, owner } of [
+  { name: "key", prefix: "k", suffix: "ey=v", owner: "key" },
+  { name: "value", prefix: "k=v", suffix: "alue", owner: "value" },
+  { name: "comment", prefix: "# a", suffix: "b", owner: "comment" },
+  { name: "glob", prefix: "[a", suffix: "b]", owner: "pattern" },
+  { name: "set", prefix: "[[a", suffix: "b]]", owner: "character_set" },
+  { name: "literal brace", prefix: "[{a", suffix: "b}]", owner: "pattern" },
+  {
+    name: "numeric range",
+    prefix: "[{1..2",
+    suffix: "}]",
+    owner: "numeric_range",
+  },
 ]) {
-  for (const [encoding, bytes] of [
-    ["invalid run", [255, 254, 128]],
-    ["surrogate", [0xed, 0xa0, 0x80]],
-    ["missing continuation", [0xc3]],
-  ]) {
-    test(`editorconfig: ${encoding} in ${name} requires standard recovery`, () => {
-      const source = Buffer.concat([
-        Buffer.from(prefix),
-        Buffer.from(bytes),
-        Buffer.from(suffix),
-      ]);
-      const tree = parse(source);
-      assert.equal(hasError(tree), true);
-      assert.deepEqual(parse(source), tree);
-    });
-  }
+  test(`editorconfig: an invalid UTF-8 run inside ${name} has an isolated range`, () => {
+    const source = Buffer.concat([
+      Buffer.from(prefix),
+      Buffer.from([255, 254, 128]),
+      Buffer.from(suffix),
+    ]);
+    const tree = parse(source);
+    assert.deepEqual(issues(tree), [
+      ["invalid_syntax", "invalid_encoding", prefix.length, prefix.length + 3],
+    ]);
+    assert.deepEqual(owners(tree), [owner]);
+  });
 }
 
-test("editorconfig: an unfinished UTF-8 sequence at EOF requires standard recovery", () => {
-  const source = Buffer.concat([Buffer.from("key="), Buffer.from([0xc3])]);
-  const tree = parse(source);
-  assert.equal(hasError(tree), true);
-  assert.deepEqual(parse(source), tree);
+test("editorconfig: only issues carry the issue field after an undecodable escape", () => {
+  const source = Buffer.concat([
+    Buffer.from("[\\"),
+    Buffer.from([0xc3]),
+    Buffer.from("\\!2[]}"),
+  ]);
+  assert.deepEqual(
+    parse(source)
+      .filter(({ field }) => field === "issue")
+      .map(({ kind }) => kind),
+    ["syntax_issue", "syntax_issue"],
+  );
 });
 
 test("editorconfig: CST helpers preserve fields, hierarchy and UTF-8 ranges across CRLF", () => {
@@ -161,16 +183,13 @@ test("editorconfig: CST helpers preserve fields, hierarchy and UTF-8 ranges acro
   ]);
 });
 
-test("editorconfig: CST helpers retain standard recovery and reject truncated roots", () => {
-  assert.throws(() => parseCst("0:0 - 0:2 document", "a=b"), {
-    code: "ERR_ASSERTION",
-  });
-  for (const artifact of ["•ERROR", "MISSING assignment_operator"]) {
-    const nodes = parseCst(
-      `0:0 - 0:3 •document\n0:3 - 0:3   ${artifact}`,
-      "a=b",
-    );
-    assert.equal(hasError(nodes), true);
+test("editorconfig: CST helpers reject truncated roots and native recovery", () => {
+  for (const text of [
+    "0:0 - 0:2 document",
+    "0:0 - 0:3 document\n0:0 - 0:1   ERROR",
+    "0:0 - 0:3 document\n0:3 - 0:3   MISSING",
+  ]) {
+    assert.throws(() => parseCst(text, "a=b"), { code: "ERR_ASSERTION" });
   }
 });
 
@@ -186,6 +205,6 @@ for (const [name, source] of [
   ],
 ]) {
   test(`editorconfig: large input: ${name}`, () => {
-    assert.equal(hasError(parse(source)), false);
+    assert.deepEqual(issues(parse(source)), []);
   });
 }

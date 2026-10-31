@@ -11,7 +11,7 @@ function parseCst(text, source) {
   for (const line of text.split("\n")) {
     const location = /^([0-9]+):([0-9]+) +- +([0-9]+):([0-9]+) +/.exec(line);
     if (!location) continue;
-    const match = /^(([a-z_]+): )?•?([a-z_]+|ERROR|MISSING)/.exec(
+    const match = /^(([a-z_]+): )?([a-z_]+|ERROR|MISSING)/.exec(
       line.slice(location[0].length),
     );
     if (!match) continue;
@@ -29,13 +29,34 @@ function parseCst(text, source) {
     });
     ancestors.push({ indentation, index: nodes.length - 1 });
   }
-  assert.ok(["document", "ERROR"].includes(nodes[0]?.kind), text);
+  assert.equal(nodes[0]?.kind, "document", text);
   assert.equal(nodes[0].end, bytes.length, text);
+  assert.ok(
+    !nodes.some(({ kind }) => kind === "ERROR" || kind === "MISSING"),
+    text,
+  );
   return nodes;
 }
 
-function hasError(nodes) {
-  return nodes.some(({ kind }) => kind === "ERROR" || kind === "MISSING");
+function issues(nodes) {
+  return nodes.flatMap((node, index) => {
+    if (node.kind !== "syntax_issue") return [];
+    const outcome = nodes[index + 1],
+      reason = nodes[index + 2];
+    assert.equal(outcome.parent, index);
+    assert.equal(reason.parent, index + 1);
+    assert.deepEqual(
+      [outcome.start, outcome.end, reason.start, reason.end],
+      [node.start, node.end, node.start, node.end],
+    );
+    return [[outcome.kind, reason.kind, node.start, node.end]];
+  });
+}
+
+function owners(nodes) {
+  return nodes
+    .filter(({ kind }) => kind === "syntax_issue")
+    .map(({ parent }) => nodes[parent].kind);
 }
 
 function leaves(source, nodes) {
@@ -48,4 +69,4 @@ function leaves(source, nodes) {
   );
 }
 
-export { hasError, leaves, parseCst };
+export { issues, leaves, owners, parseCst };

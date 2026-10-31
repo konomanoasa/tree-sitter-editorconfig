@@ -5,10 +5,20 @@
     "fields": {
       "closing": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "brace_close",
+            "named": true
+          }
+        ]
+      },
+      "issue": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
             "named": true
           }
         ]
@@ -42,7 +52,18 @@
   {
     "type": "blank_line",
     "named": true,
-    "fields": {},
+    "fields": {
+      "issue": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": false,
@@ -60,10 +81,20 @@
     "fields": {
       "closing": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "set_close",
+            "named": true
+          }
+        ]
+      },
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
             "named": true
           }
         ]
@@ -90,7 +121,7 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": false,
       "types": [
         {
@@ -103,7 +134,18 @@
   {
     "type": "comment",
     "named": true,
-    "fields": {},
+    "fields": {
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -144,12 +186,97 @@
     }
   },
   {
-    "type": "key",
+    "type": "incomplete_syntax",
     "named": true,
     "fields": {},
     "children": {
       "multiple": false,
       "required": true,
+      "types": [
+        {
+          "type": "incomplete_escape",
+          "named": true
+        },
+        {
+          "type": "invalid_line_ending",
+          "named": true
+        },
+        {
+          "type": "missing_assignment_operator",
+          "named": true
+        },
+        {
+          "type": "missing_brace_close",
+          "named": true
+        },
+        {
+          "type": "missing_section_close",
+          "named": true
+        },
+        {
+          "type": "missing_set_close",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "invalid_syntax",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "incomplete_escape",
+          "named": true
+        },
+        {
+          "type": "invalid_encoding",
+          "named": true
+        },
+        {
+          "type": "invalid_line_ending",
+          "named": true
+        },
+        {
+          "type": "missing_assignment_operator",
+          "named": true
+        },
+        {
+          "type": "missing_brace_close",
+          "named": true
+        },
+        {
+          "type": "missing_section_close",
+          "named": true
+        },
+        {
+          "type": "missing_set_close",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "key",
+    "named": true,
+    "fields": {
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
       "types": [
         {
           "type": "key_text",
@@ -164,10 +291,20 @@
     "fields": {
       "closing": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "brace_close",
+            "named": true
+          }
+        ]
+      },
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
             "named": true
           }
         ]
@@ -218,6 +355,16 @@
     "type": "pair",
     "named": true,
     "fields": {
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
+            "named": true
+          }
+        ]
+      },
       "key": {
         "multiple": false,
         "required": false,
@@ -230,7 +377,7 @@
       },
       "operator": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "assignment_operator",
@@ -263,10 +410,21 @@
   {
     "type": "pattern",
     "named": true,
-    "fields": {},
+    "fields": {
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "alternation",
@@ -370,10 +528,20 @@
     "fields": {
       "closing": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "section_close",
+            "named": true
+          }
+        ]
+      },
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
             "named": true
           }
         ]
@@ -411,12 +579,42 @@
     }
   },
   {
-    "type": "value",
+    "type": "syntax_issue",
     "named": true,
     "fields": {},
     "children": {
       "multiple": false,
       "required": true,
+      "types": [
+        {
+          "type": "incomplete_syntax",
+          "named": true
+        },
+        {
+          "type": "invalid_syntax",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "value",
+    "named": true,
+    "fields": {
+      "issue": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "syntax_issue",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
       "types": [
         {
           "type": "value_text",
@@ -458,7 +656,19 @@
     "named": true
   },
   {
+    "type": "incomplete_escape",
+    "named": true
+  },
+  {
     "type": "integer",
+    "named": true
+  },
+  {
+    "type": "invalid_encoding",
+    "named": true
+  },
+  {
+    "type": "invalid_line_ending",
     "named": true
   },
   {
@@ -467,6 +677,22 @@
   },
   {
     "type": "line_ending",
+    "named": true
+  },
+  {
+    "type": "missing_assignment_operator",
+    "named": true
+  },
+  {
+    "type": "missing_brace_close",
+    "named": true
+  },
+  {
+    "type": "missing_section_close",
+    "named": true
+  },
+  {
+    "type": "missing_set_close",
     "named": true
   },
   {

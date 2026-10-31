@@ -206,45 +206,122 @@ Empty alternatives
 0:4 - 0:5         closing: section_close `]`
 
 ==================
-A missing inner set close before LF requires standard recovery
-:error
+Missing inner set close retains the outer section close
 ==================
 [[!a]
 
 ---
 
+(document
+  (section
+    header: (section_header
+      opening: (section_open)
+      name: (pattern
+        (character_set
+          opening: (set_open)
+          negation: (set_negation)
+          (set_text)
+          issue: (syntax_issue (invalid_syntax (missing_set_close)))))
+      closing: (section_close)
+      (line_ending))))
+
 ==================
-A lone backslash before the section close and LF requires standard recovery
-:error
+A lone backslash is an issue before the section close
 ==================
 [a\]
 
 ---
 
+(document
+  (section
+    header: (section_header
+      opening: (section_open)
+      name: (pattern
+        (glob_literal)
+        issue: (syntax_issue (invalid_syntax (incomplete_escape))))
+      closing: (section_close)
+      (line_ending))))
+
 ==================
-A missing set close requires standard recovery
-:error
+Missing set close belongs to the set before the section close
+:cst
 ==================
 [[a]
 ---
 
+0:0 - 0:4   document
+0:0 - 0:4     section
+0:0 - 0:4       header: section_header
+0:0 - 0:1         opening: section_open `[`
+0:1 - 0:3         name: pattern
+0:1 - 0:3           character_set
+0:1 - 0:2             opening: set_open `[`
+0:2 - 0:3             set_text `a`
+0:3 - 0:3             issue: syntax_issue
+0:3 - 0:3               invalid_syntax
+0:3 - 0:3                 missing_set_close
+0:3 - 0:4         closing: section_close `]`
+
 ==================
-A missing alternation close requires standard recovery
-:error
+Missing alternation close belongs to the alternation before the section close
+:cst
 ==================
 [{a,b]
 ---
 
+0:0 - 0:6   document
+0:0 - 0:6     section
+0:0 - 0:6       header: section_header
+0:0 - 0:1         opening: section_open `[`
+0:1 - 0:5         name: pattern
+0:1 - 0:5           alternation
+0:1 - 0:2             opening: brace_open `{`
+0:2 - 0:3             pattern
+0:2 - 0:3               glob_literal `a`
+0:3 - 0:4             alternative_separator `,`
+0:4 - 0:5             pattern
+0:4 - 0:5               glob_literal `b`
+0:5 - 0:5             issue: syntax_issue
+0:5 - 0:5               invalid_syntax
+0:5 - 0:5                 missing_brace_close
+0:5 - 0:6         closing: section_close `]`
+
 ==================
-A missing range close requires standard recovery
-:error
+Missing range close belongs to the range before the section close
+:cst
 ==================
 [{1..2]
 ---
 
+0:0 - 0:7   document
+0:0 - 0:7     section
+0:0 - 0:7       header: section_header
+0:0 - 0:1         opening: section_open `[`
+0:1 - 0:6         name: pattern
+0:1 - 0:6           numeric_range
+0:1 - 0:2             opening: brace_open `{`
+0:2 - 0:3             lower: integer `1`
+0:3 - 0:5             range_separator `..`
+0:5 - 0:6             upper: integer `2`
+0:6 - 0:6             issue: syntax_issue
+0:6 - 0:6               invalid_syntax
+0:6 - 0:6                 missing_brace_close
+0:6 - 0:7         closing: section_close `]`
+
 ==================
-A lone backslash before the section close at EOF requires standard recovery
-:error
+A lone backslash before the section close is an issue
+:cst
 ==================
 [a\]
 ---
+
+0:0 - 0:4   document
+0:0 - 0:4     section
+0:0 - 0:4       header: section_header
+0:0 - 0:1         opening: section_open `[`
+0:1 - 0:3         name: pattern
+0:1 - 0:2           glob_literal `a`
+0:2 - 0:3           issue: syntax_issue
+0:2 - 0:3             invalid_syntax
+0:2 - 0:3               incomplete_escape `\\`
+0:3 - 0:4         closing: section_close `]`

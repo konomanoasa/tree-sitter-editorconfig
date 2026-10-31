@@ -79,6 +79,8 @@ function createHighlighter({ directory, root, run, captureNames }) {
   return (scope, source) => {
     const path = join(directory, "highlight.txt");
     writeFileSync(path, source);
+    const parsed = run(["parse", "--cst", "--scope", scope, path]);
+    assert.doesNotMatch(parsed, /^[0-9: \t-]+•/m, parsed);
     const captures = renderedCaptures(
       run([
         "highlight",
@@ -229,6 +231,28 @@ const finalCaptureCases = [
       [6, 8, "punctuation.bracket"],
     ],
   },
+  {
+    name: "lone backslash",
+    source: "[\\]",
+    captures: [
+      [0, 1, "punctuation.bracket"],
+      [2, 3, "punctuation.bracket"],
+    ],
+  },
+  {
+    name: "incomplete escape at EOF",
+    source: "[\\",
+    captures: [[0, 1, "punctuation.bracket"]],
+  },
+  {
+    name: "normal leaves in an unclosed set",
+    source: "[[a]",
+    captures: [
+      [0, 2, "punctuation.bracket"],
+      [2, 3, "string.special.path"],
+      [3, 4, "punctuation.bracket"],
+    ],
+  },
 ];
 
 for (const grammar of grammars) {
@@ -258,11 +282,5 @@ for (const name of [".editorconfig", "test.editorconfig"]) {
       [4, 5, "operator"],
       [6, 11, "string"],
     ]);
-  });
-}
-
-for (const source of ["[\\]", "[\\", "[[a]", "x\n[a]\nk=v"]) {
-  test(`editorconfig: highlighting recovery source preserves its bytes: ${JSON.stringify(source)}`, () => {
-    for (const grammar of grammars) highlight(grammar.scope, source);
   });
 }

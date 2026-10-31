@@ -1,3 +1,45 @@
+const missingElements = [
+  "assignment_operator",
+  "section_close",
+  "set_close",
+  "brace_close",
+];
+
+const issueTokens = [
+  ["invalid_encoding", "invalid_syntax", "invalid_encoding"],
+  ["invalid_line_ending", "invalid_syntax", "invalid_line_ending"],
+  ["incomplete_line_ending", "incomplete_syntax", "invalid_line_ending"],
+  ["invalid_escape", "invalid_syntax", "incomplete_escape"],
+  ["incomplete_escape", "incomplete_syntax", "incomplete_escape"],
+  ...missingElements.flatMap((name) => [
+    [`invalid_missing_${name}`, "invalid_syntax", `missing_${name}`],
+    [`incomplete_missing_${name}`, "incomplete_syntax", `missing_${name}`],
+  ]),
+];
+
+const issueRules = Object.fromEntries(
+  issueTokens.flatMap(([name, outcome, reason]) => [
+    [`_${name}_outcome`, ($) => alias($[`_${name}`], $[reason])],
+    [`_${name}_issue`, ($) => alias($[`_${name}_outcome`], $[outcome])],
+  ]),
+);
+
+function issue($, name) {
+  return field("issue", alias($[`_${name}_issue`], $.syntax_issue));
+}
+
+function issues($, name) {
+  return choice(issue($, `invalid_${name}`), issue($, `incomplete_${name}`));
+}
+
+function closing($, name) {
+  return choice(field("closing", $[name]), issues($, `missing_${name}`));
+}
+
+function pieces($, text) {
+  return choice(text, issue($, "invalid_encoding"));
+}
+
 export default grammar({
   name: "editorconfig",
   externals: ($) => [
@@ -20,6 +62,7 @@ export default grammar({
     $.single_character,
     $.path_separator,
     $.escape,
+    $._escape_prefix,
     $.set_open,
     $.set_negation,
     $.set_text,
@@ -30,6 +73,7 @@ export default grammar({
     $.alternative_separator,
     $.integer,
     $.range_separator,
+    ...issueTokens.map(([name]) => $[`_${name}`]),
     $._error_sentinel,
   ],
   extras: ($) => [$._unmatchable],
@@ -40,27 +84,37 @@ export default grammar({
       seq(field("header", $.section_header), repeat($._body_line)),
     _body_line: ($) => choice($.blank_line, $.comment, $.pair),
 
-    _end: ($) => choice($.line_ending, $._eof),
+    _end: ($) => choice($.line_ending, issues($, "line_ending"), $._eof),
     blank_line: ($) => seq($._blank_start, $._end),
     comment: ($) =>
-      seq($._comment_start, $.comment_marker, optional($.comment_text), $._end),
+      seq(
+        $._comment_start,
+        $.comment_marker,
+        repeat(pieces($, $.comment_text)),
+        $._end,
+      ),
     pair: ($) =>
       seq(
         $._pair_start,
         optional(field("key", $.key)),
-        field("operator", $.assignment_operator),
-        optional(field("value", $.value)),
+        choice(
+          seq(
+            field("operator", $.assignment_operator),
+            optional(field("value", $.value)),
+          ),
+          issues($, "missing_assignment_operator"),
+        ),
         $._end,
       ),
-    key: ($) => $.key_text,
-    value: ($) => $.value_text,
+    key: ($) => repeat1(pieces($, $.key_text)),
+    value: ($) => repeat1(pieces($, $.value_text)),
 
     section_header: ($) =>
       seq(
         $._header_start,
         field("opening", $.section_open),
         optional(field("name", $.pattern)),
-        field("closing", $.section_close),
+        closing($, "section_close"),
         $._end,
       ),
     pattern: ($) =>
@@ -72,24 +126,29 @@ export default grammar({
           $.single_character,
           $.path_separator,
           $.escape,
+          issues($, "escape"),
+          $._undecodable_escape,
           $.character_set,
           $.alternation,
           $.numeric_range,
+          issue($, "invalid_encoding"),
         ),
       ),
+    _undecodable_escape: ($) =>
+      seq($._escape_prefix, issue($, "invalid_encoding")),
     character_set: ($) =>
       seq(
         field("opening", $.set_open),
         optional(field("negation", $.set_negation)),
-        optional($.set_text),
-        field("closing", $.set_close),
+        repeat(pieces($, $.set_text)),
+        closing($, "set_close"),
       ),
     alternation: ($) =>
       seq(
         field("opening", alias($._alternation_open, $.brace_open)),
         optional($.pattern),
         repeat1(seq($.alternative_separator, optional($.pattern))),
-        field("closing", $.brace_close),
+        closing($, "brace_close"),
       ),
     numeric_range: ($) =>
       seq(
@@ -97,9 +156,11 @@ export default grammar({
         field("lower", $.integer),
         $.range_separator,
         field("upper", $.integer),
-        field("closing", $.brace_close),
+        optional(issue($, "invalid_encoding")),
+        closing($, "brace_close"),
       ),
 
     _unmatchable: () => token(seq(/[\s\S]/, /[^\s\S]/)),
+    ...issueRules,
   },
 });
