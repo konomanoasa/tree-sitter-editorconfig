@@ -183,7 +183,6 @@ function checkDiagnostics(clang, clangd, directory) {
         "-I",
         variant.includeDirectory,
         ...warningArguments,
-        "-ferror-limit=0",
         "-fsyntax-only",
         source,
       ],
@@ -258,13 +257,10 @@ function main(arguments_) {
   const testing = ["--test", "--sanitize"].includes(arguments_[0]);
   const { clang, clangd, clangFormat } = testing
     ? {
-        clang:
-          process.platform === "darwin"
-            ? "/opt/homebrew/opt/llvm/bin/clang"
-            : findExecutable(
-                process.env.CC ?? "clang",
-                (process.env.PATH ?? "").split(delimiter),
-              ),
+        clang: findExecutable(
+          process.env.CC ?? "cc",
+          (process.env.PATH ?? "").split(delimiter),
+        ),
         clangd: "",
         clangFormat: "",
       }
@@ -301,7 +297,6 @@ function main(arguments_) {
       for (const variant of variants) {
         const compilerArguments = [
           ...sanitizerArguments,
-          ...warningArguments,
           `-std=${standard}`,
           "-I",
           variant.includeDirectory,

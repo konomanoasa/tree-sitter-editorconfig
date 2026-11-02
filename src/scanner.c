@@ -102,7 +102,6 @@ take(Scanner *s, TSLexer *lexer, const bool *valid, enum Token token) {
   return emit(lexer, valid, token);
 }
 
-/* Include the next character in edit invalidation. */
 static void read_next(TSLexer *lexer) {
   lexer->advance(lexer, false);
 }
