@@ -15,13 +15,12 @@ fn parses_valid_source() {
   assert!(grammar::NODE_TYPES.contains("\"document\""));
   let query = Query::new(&language, grammar::HIGHLIGHTS_QUERY).unwrap();
   let mut cursor = QueryCursor::new();
-  let mut matches = cursor.matches(&query, root, source.as_bytes());
+  let mut captures = cursor.captures(&query, root, source.as_bytes());
   let mut properties = Vec::new();
-  while let Some(found) = matches.next() {
-    for capture in found.captures() {
-      if query.capture_names()[capture.index as usize] == "property" {
-        properties.push(capture.node.utf8_text(source.as_bytes()).unwrap());
-      }
+  while let Some((matched, index)) = captures.next() {
+    let capture = matched.captures()[*index];
+    if query.capture_names()[capture.index as usize] == "property" {
+      properties.push(capture.node.utf8_text(source.as_bytes()).unwrap());
     }
   }
   assert_eq!(properties, ["indent_style"]);
